@@ -36,6 +36,32 @@
       },
       "required": ["name", "type", "gender"]
     },
+    "ElephantPost": {
+      "title": "ElephantPost",
+      "description": "Community user-uploaded photo and post for an elephant profile",
+      "type": "object",
+      "properties": {
+        "elephantId": {
+          "type": "string"
+        },
+        "elephantName": {
+          "type": "string"
+        },
+        "photoUrl": {
+          "type": "string"
+        },
+        "caption": {
+          "type": "string"
+        },
+        "authorName": {
+          "type": "string"
+        },
+        "authorUsername": {
+          "type": "string"
+        }
+      },
+      "required": ["elephantId", "photoUrl", "authorUsername"]
+    },
     "UserProfile": {
       "title": "UserProfile",
       "description": "Public profile and followings for an authenticated user",
@@ -86,6 +112,12 @@
         "$ref": "#/entities/Elephant"
       },
       "description": "Public registry of domesticated elephants"
+    },
+    "/elephant_posts/{postId}": {
+      "schema": {
+        "$ref": "#/entities/ElephantPost"
+      },
+      "description": "Community user-submitted posts and photos tagged to elephants"
     },
     "/users/{userId}": {
       "schema": {

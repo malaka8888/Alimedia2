@@ -37,6 +37,25 @@ export interface Elephant {
   updatedAt?: any;
 }
 
+export interface ElephantPost {
+  id?: string;
+  elephantId: string; // Target Elephant document ID
+  elephantName: string; // Elephant name
+  elephantSinhalaName?: string;
+  photoUrl: string; // Image URL (Data URL or hosted URL)
+  caption: string; // Post description/caption
+  authorUid?: string; // User UID
+  authorName: string; // Author full name (e.g. "Malaka Fernando")
+  authorUsername: string; // Author handle (e.g. "@malaka")
+  authorPhotoURL?: string; // Author avatar
+  likesCount?: number;
+  likedBy?: string[];
+  isStory?: boolean; // Auto shared to story
+  isStoryOnly?: boolean; // Story only (not shown in regular feed)
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface CulturalEvent {
   id?: string;
   title: string;

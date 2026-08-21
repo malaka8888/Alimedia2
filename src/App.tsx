@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Elephant, CulturalEvent } from './types/elephant';
+import { Elephant, CulturalEvent, ElephantPost } from './types/elephant';
 import {
   getElephants,
   addElephant,
@@ -14,6 +14,7 @@ import {
   updateCulturalEvent,
   deleteCulturalEvent
 } from './firebase/elephantService';
+import { getAllElephantPosts } from './firebase/postService';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { DiscoverFeed } from './components/DiscoverFeed';
@@ -21,6 +22,7 @@ import { ElephantDirectory } from './components/ElephantDirectory';
 import { ElephantProfileScreen } from './components/ElephantProfileScreen';
 import { UserProfileScreen } from './components/UserProfileScreen';
 import { AdminPanel } from './components/AdminPanel';
+import { CreatePostModal } from './components/CreatePostModal';
 import { PhotoLightbox } from './components/PhotoLightbox';
 import { Language, translations } from './utils/translations';
 import { CheckCircle2, Calendar, MapPin, Crown } from 'lucide-react';
@@ -28,15 +30,20 @@ import { CheckCircle2, Calendar, MapPin, Crown } from 'lucide-react';
 export default function App() {
   const [elephants, setElephants] = useState<Elephant[]>([]);
   const [events, setEvents] = useState<CulturalEvent[]>([]);
+  const [posts, setPosts] = useState<ElephantPost[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Tabs: 'home' | 'elephant' | 'notifications' | 'profile' | 'admin'
-  const [currentTab, setCurrentTab] = useState<'home' | 'elephant' | 'notifications' | 'profile' | 'admin'>('home');
+  // Tabs: 'home' | 'elephant' | 'notifications' | 'profile'
+  const [currentTab, setCurrentTab] = useState<'home' | 'elephant' | 'notifications' | 'profile'>('home');
   const [selectedElephant, setSelectedElephant] = useState<Elephant | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
 
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+  const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false);
+  const [createPostElephantId, setCreatePostElephantId] = useState<string | undefined>(undefined);
+  const [isCreatePostStoryOnly, setIsCreatePostStoryOnly] = useState<boolean>(false);
+
   const [isSeeding, setIsSeeding] = useState<boolean>(false);
   const [language, setLanguage] = useState<Language>('si');
   const [notification, setNotification] = useState<string | null>(null);
@@ -46,14 +53,15 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Load elephants and cultural events from Cloud Firestore
+  // Load elephants, cultural events, and community posts from Cloud Firestore
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [elephantData, eventData] = await Promise.all([
+      const [elephantData, eventData, postData] = await Promise.all([
         getElephants(),
-        getCulturalEvents()
+        getCulturalEvents(),
+        getAllElephantPosts()
       ]);
 
       // If Firestore is empty on initial run, automatically seed verified records
@@ -65,17 +73,20 @@ export default function App() {
           const refreshedEvents = await getCulturalEvents();
           setElephants(refreshedElephants);
           setEvents(refreshedEvents);
+          setPosts(postData);
           showNotification(language === 'si' ? 'හීලෑ අලි වාර්තා සාර්ථකව සම්බන්ධ කෙරිණි!' : 'Verified records loaded!');
         } catch (seedErr: any) {
           console.warn('Auto-seed fallback:', seedErr);
           setElephants([]);
           setEvents(eventData);
+          setPosts(postData);
         } finally {
           setIsSeeding(false);
         }
       } else {
         setElephants(elephantData);
         setEvents(eventData);
+        setPosts(postData);
       }
     } catch (err: any) {
       console.error('Failed to load from Firestore:', err);
@@ -141,33 +152,51 @@ export default function App() {
     }
   };
 
-  const handleTabChange = (tab: 'home' | 'elephant' | 'notifications' | 'profile' | 'admin') => {
+  const handleTabChange = (tab: 'home' | 'elephant' | 'notifications' | 'profile') => {
     setSelectedElephant(null);
-    if (tab === 'admin') {
-      setIsAdminOpen(true);
-      window.location.hash = 'admin';
-      return;
-    }
-
+    setIsAdminOpen(false);
     setCurrentTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (tab === 'elephant') {
-      setIsAdminOpen(false);
       window.location.hash = 'elephant';
     } else if (tab === 'home') {
-      setIsAdminOpen(false);
       window.location.hash = 'home';
     } else if (tab === 'profile') {
-      setIsAdminOpen(false);
       window.location.hash = 'profile';
     } else if (tab === 'notifications') {
-      setIsAdminOpen(false);
       window.location.hash = 'notifications';
     }
   };
 
+  // Open Create Post Modal
+  const handleOpenCreatePost = (elephantId?: string, isStoryOnly: boolean = false) => {
+    setCreatePostElephantId(elephantId);
+    setIsCreatePostStoryOnly(isStoryOnly);
+    setIsCreatePostOpen(true);
+  };
+
+  const handlePostSuccess = async (newPost: ElephantPost, updatedElephantId?: string) => {
+    setIsCreatePostOpen(false);
+    showNotification(language === 'si' ? 'ඡායාරූපය සාර්ථකව පළ කෙරිණි!' : 'Post published successfully!');
+    
+    // Refresh posts & elephants
+    const [freshPosts, freshElephants] = await Promise.all([
+      getAllElephantPosts(),
+      getElephants()
+    ]);
+    setPosts(freshPosts);
+    setElephants(freshElephants);
+
+    if (updatedElephantId) {
+      const refreshedElephant = freshElephants.find((e) => e.id === updatedElephantId);
+      if (refreshedElephant && selectedElephant?.id === updatedElephantId) {
+        setSelectedElephant(refreshedElephant);
+      }
+    }
+  };
+
   // -------------------------------------------------------------
-  // Elephant CRUD Handlers
+  // Elephant CRUD Handlers (Admin)
   // -------------------------------------------------------------
 
   const handleSaveElephant = async (
@@ -297,20 +326,22 @@ export default function App() {
           /* SCREEN 3: Profile view when clicking "View" / elephant */
           <ElephantProfileScreen
             elephant={selectedElephant}
+            communityPosts={posts}
             language={language}
             onBack={handleBackToDirectory}
             onSelectPhoto={(photoUrl) => setLightboxPhoto(photoUrl)}
+            onOpenCreatePost={(id) => handleOpenCreatePost(id)}
           />
         ) : currentTab === 'home' ? (
           /* SCREEN 1: /home Discover tab matching Instagram-style discover */
           <DiscoverFeed
             elephants={elephants}
+            posts={posts}
             language={language}
             onSelectElephant={handleSelectElephant}
-            onOpenAdmin={() => {
-              setIsAdminOpen(true);
-              window.location.hash = 'admin';
-            }}
+            onOpenCreatePost={(id, isStoryOnly) => handleOpenCreatePost(id, isStoryOnly)}
+            onSelectPhoto={(photoUrl) => setLightboxPhoto(photoUrl)}
+            onShowNotification={showNotification}
           />
         ) : currentTab === 'elephant' ? (
           /* /Elephant tab: Horizontal circular profiles + directory with View buttons */
@@ -389,12 +420,9 @@ export default function App() {
 
       {/* Floating Bottom Navigation Bar */}
       <BottomNav
-        currentTab={currentTab === 'admin' ? 'profile' : currentTab}
+        currentTab={currentTab}
         onSelectTab={handleTabChange}
-        onOpenAdd={() => {
-          setIsAdminOpen(true);
-          window.location.hash = 'admin';
-        }}
+        onOpenAdd={() => handleOpenCreatePost()}
       />
 
       {/* Photo Lightbox */}
@@ -405,7 +433,19 @@ export default function App() {
         />
       )}
 
-      {/* Full Admin Control Console & Authentication Modal */}
+      {/* Create Post / Photo Upload Modal for Elephants */}
+      {isCreatePostOpen && (
+        <CreatePostModal
+          elephants={elephants}
+          preselectedElephantId={createPostElephantId}
+          isStoryOnlyInitial={isCreatePostStoryOnly}
+          language={language}
+          onClose={() => setIsCreatePostOpen(false)}
+          onPostSuccess={handlePostSuccess}
+        />
+      )}
+
+      {/* Admin Management Console Modal (Opened via Top Shield icon) */}
       {isAdminOpen && (
         <AdminPanel
           elephants={elephants}

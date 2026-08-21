@@ -12,6 +12,13 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Community user-submitted elephant posts
+    match /elephant_posts/{postId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if request.auth != null;
+    }
+
     // Cultural events and notices
     match /cultural_events/{eventId} {
       allow read: if true;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Elephant } from '../types/elephant';
+import { Elephant, ElephantPost } from '../types/elephant';
 import {
   ArrowLeft,
   ShieldCheck,
@@ -14,23 +14,29 @@ import {
   CheckCircle2,
   Info,
   UserPlus,
-  Check
+  Check,
+  Plus,
+  MessageSquare
 } from 'lucide-react';
 import { Language, translations } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 
 interface ElephantProfileScreenProps {
   elephant: Elephant;
+  communityPosts?: ElephantPost[];
   language: Language;
   onBack: () => void;
   onSelectPhoto: (photoUrl: string) => void;
+  onOpenCreatePost?: (elephantId: string) => void;
 }
 
 export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   elephant,
+  communityPosts = [],
   language,
   onBack,
   onSelectPhoto,
+  onOpenCreatePost,
 }) => {
   const t = translations[language];
   const { isFollowing, toggleFollowElephant } = useAuth();
@@ -40,6 +46,11 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   const photos = elephant.photos && elephant.photos.length > 0
     ? elephant.photos
     : ['https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=800&q=80'];
+
+  // Filter community posts that are tagged for this elephant
+  const elephantPosts = communityPosts.filter(
+    (p) => p.elephantId === elephant.id || p.elephantName?.toLowerCase() === elephant.name?.toLowerCase()
+  );
 
   const [activeTab, setActiveTab] = useState<'gallery' | 'details' | 'sources'>('gallery');
   const [isSaved, setIsSaved] = useState(false);
@@ -138,7 +149,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
           {elephant.description || notAvailable}
         </p>
 
-        {/* Follow Button & Verification Pill */}
+        {/* Follow Button & Action Buttons */}
         <div className="pt-1 flex items-center justify-center gap-2 flex-wrap">
           {/* Follow / Following Button */}
           <button
@@ -161,6 +172,17 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
               </>
             )}
           </button>
+
+          {/* Add Photo to Profile Button */}
+          {onOpenCreatePost && elephant.id && (
+            <button
+              onClick={() => onOpenCreatePost(elephant.id!)}
+              className="px-4 py-1.5 rounded-full text-xs font-extrabold bg-emerald-100 hover:bg-emerald-200 text-[#062E22] border border-emerald-300 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-800 stroke-[2.5]" />
+              <span>{language === 'si' ? 'ඡායාරූපයක් එක් කරන්න' : 'Add Photo'}</span>
+            </button>
+          )}
 
           <span className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-100/80 text-[#062E22] border border-emerald-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
@@ -245,29 +267,97 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: 3-Column Photo Grid */}
+      {/* TAB 1: 3-Column Photo Grid & Community Posts */}
       {activeTab === 'gallery' && (
-        <div className="p-2">
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-            {photos.map((photo, i) => (
-              <div
-                key={i}
-                onClick={() => onSelectPhoto(photo)}
-                className="relative aspect-square rounded-lg sm:rounded-xl overflow-hidden bg-zinc-100 cursor-pointer group shadow-sm"
-              >
-                <img
-                  src={photo}
-                  alt={`${elephant.name} ${i + 1}`}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-              </div>
-            ))}
+        <div className="p-3 space-y-4">
+          {/* Official / Verified Gallery Grid */}
+          <div>
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-xs font-extrabold text-[#062E22]">
+                {language === 'si' ? 'සත්‍යාපිත ඡායාරූප එකතුව' : 'Photo Gallery'} ({photos.length})
+              </span>
+              {onOpenCreatePost && elephant.id && (
+                <button
+                  onClick={() => onOpenCreatePost(elephant.id!)}
+                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-950 flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>{language === 'si' ? 'ඡායාරූපයක් එක්කරන්න' : 'Add Photo'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+              {photos.map((photo, i) => (
+                <div
+                  key={i}
+                  onClick={() => onSelectPhoto(photo)}
+                  className="relative aspect-square rounded-lg sm:rounded-xl overflow-hidden bg-zinc-100 cursor-pointer group shadow-xs"
+                >
+                  <img
+                    src={photo}
+                    alt={`${elephant.name} ${i + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                </div>
+              ))}
+            </div>
           </div>
-          {photos.length === 1 && (
-            <p className="text-center text-xs text-zinc-400 mt-4">
-              {language === 'si' ? 'තවත් ඡායාරූප ඉදිරියේදී එක් කරනු ඇත.' : 'More verified photographs being archived.'}
-            </p>
+
+          {/* Community Tagged Posts (with author attribution) */}
+          {elephantPosts && elephantPosts.length > 0 && (
+            <div className="pt-3 border-t border-zinc-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-[#062E22] flex items-center gap-1">
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>{language === 'si' ? 'පරිශීලකයින් පළකළ ඡායාරූප' : 'Community Shared Posts'} ({elephantPosts.length})</span>
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {elephantPosts.map((post) => (
+                  <div
+                    key={post.id}
+                    className="bg-[#FAF9F5] p-3 rounded-2xl border border-zinc-200/80 space-y-2"
+                  >
+                    <div
+                      onClick={() => onSelectPhoto(post.photoUrl)}
+                      className="aspect-[4/3] rounded-xl overflow-hidden bg-zinc-200 cursor-pointer shadow-inner"
+                    >
+                      <img src={post.photoUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+
+                    {post.caption && (
+                      <p className="text-xs text-zinc-700 font-medium">
+                        {post.caption}
+                      </p>
+                    )}
+
+                    {/* Author Attribution */}
+                    <div className="pt-1.5 border-t border-zinc-200/60 flex items-center justify-between text-[11px] text-zinc-500">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-4 h-4 rounded-full overflow-hidden bg-zinc-300">
+                          <img
+                            src={post.authorPhotoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="truncate">
+                          {language === 'si' ? 'ඡායාරූපය:' : 'By'}{' '}
+                          <b className="text-[#062E22] font-semibold">{post.authorUsername || post.authorName}</b>
+                        </span>
+                      </div>
+
+                      <span className="text-[10px] text-zinc-400">
+                        {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleDateString() : 'Recent'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
