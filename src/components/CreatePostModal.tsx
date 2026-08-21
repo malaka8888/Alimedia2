@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Elephant, ElephantPost } from '../types/elephant';
 import { useAuth } from '../firebase/authContext';
 import { addElephantPost } from '../firebase/postService';
-import { Language, translations } from '../utils/translations';
+import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import {
   X,
   UploadCloud,
@@ -38,6 +38,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onPostSuccess,
 }) => {
   const { user, profile, signInWithGoogle } = useAuth();
+  const t = translations[language];
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedElephantId, setSelectedElephantId] = useState<string>(preselectedElephantId || '');
@@ -49,14 +50,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [guestName, setGuestName] = useState<string>('');
   const [guestHandle, setGuestHandle] = useState<string>('');
 
-  // User Request: Auto share to story checkbox & Story-only option
   const [autoShareStory, setAutoShareStory] = useState<boolean>(true);
   const [isStoryOnly, setIsStoryOnly] = useState<boolean>(isStoryOnlyInitial);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // If preselectedElephantId changes, set it
   useEffect(() => {
     if (preselectedElephantId) {
       setSelectedElephantId(preselectedElephantId);
@@ -70,12 +69,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
   }, [isStoryOnlyInitial]);
 
-  // Handle local image file upload from device gallery
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check size limit (max ~8MB)
     if (file.size > 8 * 1024 * 1024) {
       setErrorMsg(language === 'si' ? 'ඡායාරූපය 8MB ට වඩා අඩු විය යුතුය.' : 'Photo must be under 8MB.');
       return;
@@ -95,7 +92,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setPhotoPreview(photoUrlInput.trim());
   };
 
-  // Filter elephants for the selector
   const filteredElephants = elephants.filter((el) => {
     const query = elephantSearch.toLowerCase().trim();
     if (!query) return true;
@@ -109,7 +105,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   const selectedElephantObj = elephants.find((e) => e.id === selectedElephantId);
 
-  // Form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -117,7 +112,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const imageToUse = photoPreview || photoUrlInput.trim();
 
     if (!imageToUse) {
-      setErrorMsg(language === 'si' ? 'කරුණාකර ඡායාරූපයක් තෝරන්න (Select a photo).' : 'Please upload or provide a photo.');
+      setErrorMsg(language === 'si' ? 'කරුණාකර ඡායාරූපයක් තෝරන්න.' : 'Please upload or provide a photo.');
       return;
     }
 
@@ -214,7 +209,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
-                <span>1. {language === 'si' ? 'ඡායාරූපය තෝරන්න (Select Photo)' : 'Select Photo'} *</span>
+                <span>1. {language === 'si' ? 'ඡායාරූපය තෝරන්න' : 'Select Photo'} *</span>
               </label>
               
               <button
@@ -227,7 +222,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </button>
             </div>
 
-            {/* Hidden native file input */}
             <input
               type="file"
               ref={fileInputRef}
@@ -236,7 +230,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               onChange={handleFileChange}
             />
 
-            {/* If photo is selected, show preview */}
             {photoPreview ? (
               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 border-2 border-emerald-600 shadow-inner group">
                 <img
@@ -281,7 +274,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   onClick={handleApplyUrl}
                   className="px-4 py-2 bg-[#062E22] text-white text-xs font-bold rounded-xl cursor-pointer hover:bg-emerald-900"
                 >
-                  Apply
+                  {language === 'si' ? 'ඇතුළත් කරන්න' : 'Apply'}
                 </button>
               </div>
             ) : (
@@ -308,10 +301,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <div className="space-y-1.5">
             <label className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>2. {language === 'si' ? 'අලියා / ඇතා තෝරන්න (Select Elephant)' : 'Select Elephant Profile'} *</span>
+              <span>2. {language === 'si' ? 'අලියා / ඇතා තෝරන්න' : 'Select Elephant Profile'} *</span>
             </label>
 
-            {/* Search box for elephants */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-3" />
               <input
@@ -323,7 +315,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               />
             </div>
 
-            {/* Elephants List */}
             <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-zinc-200 rounded-2xl p-2 bg-[#FAF9F5]">
               {filteredElephants.length === 0 ? (
                 <div className="p-3 text-center text-xs text-zinc-400">
@@ -334,6 +325,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   const isSelected = selectedElephantId === el.id;
                   const thumb = el.photos && el.photos.length > 0 ? el.photos[0] : '';
                   const isTusker = el.type === 'tusker';
+                  const bilingualName = formatBilingualElephantName(el, language);
 
                   return (
                     <div
@@ -351,12 +343,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1">
-                            <span className="font-bold text-xs truncate">{el.name}</span>
-                            {el.sinhalaName && (
-                              <span className={`text-[10px] truncate ${isSelected ? 'text-emerald-200' : 'text-zinc-500'}`}>
-                                ({el.sinhalaName})
-                              </span>
-                            )}
+                            <span className="font-bold text-xs truncate">{bilingualName}</span>
                           </div>
                           <p className={`text-[9px] truncate ${isSelected ? 'text-emerald-100/80' : 'text-zinc-400'}`}>
                             {el.organization || el.location}
@@ -367,7 +354,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       <div className="shrink-0 flex items-center gap-1">
                         {isTusker && (
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isSelected ? 'bg-amber-400 text-zinc-950' : 'bg-amber-100 text-amber-900'}`}>
-                            Tusker
+                            {t.tusker}
                           </span>
                         )}
                         {isSelected && (
@@ -383,7 +370,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             {selectedElephantObj && (
               <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1 pt-0.5">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                <span>{language === 'si' ? 'තෝරාගත් ඇතා:' : 'Target:'} <b>{selectedElephantObj.name}</b> {selectedElephantObj.sinhalaName ? `(${selectedElephantObj.sinhalaName})` : ''}</span>
+                <span>{language === 'si' ? 'තෝරාගත් ඇතා:' : 'Target:'} <b>{formatBilingualElephantName(selectedElephantObj, language)}</b></span>
               </p>
             )}
           </div>
@@ -393,7 +380,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
                 <Share2 className="w-3.5 h-3.5 text-emerald-700" />
-                <span>{language === 'si' ? 'Story සැකසුම් (Story Options)' : 'Story Options'}</span>
+                <span>{language === 'si' ? 'Story සැකසුම්' : 'Story Options'}</span>
               </span>
             </div>
 
@@ -417,7 +404,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </div>
             </label>
 
-            {/* Checkbox 2: Story Only (Do not show on main feed) */}
+            {/* Checkbox 2: Story Only */}
             <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1 border-t border-zinc-200/60">
               <input
                 type="checkbox"
@@ -472,7 +459,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <div className="p-3 bg-[#FAF9F5] rounded-2xl border border-zinc-200/80 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-[#062E22]">
-                {language === 'si' ? 'පළකරන්නාගේ විස්තර (Author)' : 'Author Info'}
+                {language === 'si' ? 'පළකරන්නාගේ විස්තර' : 'Author Info'}
               </span>
 
               {user || profile ? (
@@ -520,7 +507,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <input
                     type="text"
-                    placeholder={language === 'si' ? 'ඔබගේ නම (Name)' : 'Your Name'}
+                    placeholder={language === 'si' ? 'ඔබගේ නම' : 'Your Name'}
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
                     className="p-2 text-xs rounded-lg border border-zinc-300 bg-white"
@@ -554,7 +541,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   <Sparkles className="w-4 h-4 text-amber-300" />
                   <span>
                     {isStoryOnly
-                      ? (language === 'si' ? 'Story එක පළ කරන්න (Publish Story)' : 'Publish Story')
+                      ? (language === 'si' ? 'Story එක පළ කරන්න' : 'Publish Story')
                       : autoShareStory
                       ? (language === 'si' ? 'Post සහ Story පළ කරන්න' : 'Publish Post & Story')
                       : (language === 'si' ? 'Post එක පළ කරන්න' : 'Publish Post')}

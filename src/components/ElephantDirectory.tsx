@@ -13,7 +13,7 @@ import {
   UserCheck,
   UserPlus
 } from 'lucide-react';
-import { Language, translations } from '../utils/translations';
+import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 
 interface ElephantDirectoryProps {
@@ -36,7 +36,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
   const [activeCategory, setActiveCategory] = useState<'all' | 'tusker' | 'elephant' | 'living' | 'memorial'>('all');
 
   // -------------------------------------------------------------
-  // TOP 3 MOST FOLLOWED ELEPHANTS (වැඩිම followersලා ඉන්න අලි 3 දෙනා)
+  // TOP 3 MOST FOLLOWED ELEPHANTS
   // -------------------------------------------------------------
   const topFollowedElephants = useMemo(() => {
     const scored = elephants.map((el, idx) => {
@@ -86,12 +86,10 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
       <div className="pt-2 px-1 flex items-center justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#062E22] tracking-tight">
-            {language === 'si' ? 'හීලෑ අලි නාමාවලිය' : 'Elephant Directory'}
+            {t.elephantDirectoryTitle}
           </h1>
           <p className="text-xs text-zinc-500 font-medium mt-0.5">
-            {language === 'si'
-              ? 'ශ්‍රී ලංකාවේ ලියාපදිංචි හීලෑ අලි සහ ඇත්තු'
-              : 'Verified domesticated Sri Lankan elephants & tuskers'}
+            {t.registeredElephantsCount}
           </p>
         </div>
 
@@ -110,7 +108,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
               <Flame className="w-3 h-3 fill-zinc-950" />
             </div>
             <h2 className="text-xs font-black text-[#062E22] uppercase tracking-wider">
-              {language === 'si' ? 'වැඩිම Followersලා සිටින ඇතුන් 3 (Trending)' : 'Top 3 Most Followed (Trending)'}
+              {t.topFollowedTrending}
             </h2>
           </div>
           <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
@@ -125,6 +123,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
             const rank = index + 1;
             const photo = el.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
             const formattedFollowers = item.followers >= 1000 ? `${(item.followers / 1000).toFixed(1)}K` : `${item.followers}`;
+            const bilingualName = formatBilingualElephantName(el, language);
 
             return (
               <div
@@ -158,7 +157,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
                       e.stopPropagation();
                       if (el.id) toggleFollowElephant(el.id);
                     }}
-                    title={item.isFollowed ? 'Following' : 'Follow'}
+                    title={item.isFollowed ? t.following : t.follow}
                     className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform active:scale-90 shadow-md ${
                       item.isFollowed
                         ? 'bg-amber-400 text-zinc-950'
@@ -173,19 +172,19 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
                   </button>
                 </div>
 
-                {/* Bottom Details: Follower count & Elephant Name */}
+                {/* Bottom Details: Follower count & Elephant Bilingual Name */}
                 <div className="absolute bottom-2 left-2 right-2 text-white space-y-0.5">
                   <div className="flex items-center gap-1 text-[9px] font-black text-amber-300 drop-shadow">
                     <Users className="w-2.5 h-2.5 text-amber-300" />
-                    <span>{formattedFollowers} Followers</span>
+                    <span>{formattedFollowers} {t.followers}</span>
                   </div>
 
-                  <h3 className="text-xs font-extrabold truncate drop-shadow leading-tight">
+                  <h3 className="text-xs font-extrabold truncate drop-shadow leading-tight" title={bilingualName}>
                     {el.name}
                   </h3>
 
                   {el.sinhalaName && (
-                    <p className="text-[10px] font-medium text-white/80 truncate font-sinhala leading-tight">
+                    <p className="text-[10px] font-medium text-amber-200 truncate font-sinhala leading-tight">
                       {el.sinhalaName}
                     </p>
                   )}
@@ -209,9 +208,9 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
         {searchTerm && (
           <button
             onClick={() => setSearchTerm('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 hover:text-zinc-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 hover:text-zinc-600 cursor-pointer"
           >
-            Clear
+            {t.clearFilters}
           </button>
         )}
       </div>
@@ -219,11 +218,11 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
       {/* Filter Category Chips */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {[
-          { id: 'all', label: language === 'si' ? 'සියල්ල' : 'All' },
-          { id: 'tusker', label: language === 'si' ? 'ඇත්තු (Tuskers)' : 'Tuskers' },
-          { id: 'elephant', label: language === 'si' ? 'අලින් (Elephants)' : 'Elephants' },
-          { id: 'living', label: language === 'si' ? 'ජීවතුන් අතර' : 'Living' },
-          { id: 'memorial', label: language === 'si' ? 'ජාතික වස්තු (Memorial)' : 'Memorial' },
+          { id: 'all', label: t.all },
+          { id: 'tusker', label: t.tuskers },
+          { id: 'elephant', label: t.elephants },
+          { id: 'living', label: t.living },
+          { id: 'memorial', label: t.memorial },
         ].map((cat) => (
           <button
             key={cat.id}
@@ -244,7 +243,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
         {filteredElephants.length === 0 ? (
           <div className="bg-white rounded-3xl p-8 text-center border border-zinc-200">
             <p className="text-sm font-semibold text-zinc-600">
-              {language === 'si' ? 'කිසිදු හීලෑ අලියෙකු හමු නොවීය.' : 'No elephant profiles found.'}
+              {t.noProfilesFound}
             </p>
             <button
               onClick={() => {
@@ -253,7 +252,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
               }}
               className="mt-3 text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
             >
-              {language === 'si' ? 'සියලු පෙරහන් ඉවත් කරන්න' : 'Reset filters'}
+              {t.resetFilters}
             </button>
           </div>
         ) : (
@@ -262,13 +261,14 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
             const photo = elephant.photos && elephant.photos.length > 0
               ? elephant.photos[0]
               : 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=600&q=80';
+            const bilingualName = formatBilingualElephantName(elephant, language);
 
             return (
               <div
                 key={elephant.id}
                 className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-xs hover:shadow-md border border-zinc-200/80 transition-all flex items-center justify-between gap-3 group"
               >
-                {/* Left side: Avatar + Details */}
+                {/* Left side: Avatar + Bilingual Details */}
                 <div
                   onClick={() => onSelectElephant(elephant)}
                   className="flex items-center gap-3.5 min-w-0 flex-1 cursor-pointer"
@@ -295,17 +295,12 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
                     )}
                   </div>
 
-                  {/* Information */}
+                  {/* Information with Both Names */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-bold text-sm sm:text-base text-[#062E22] truncate group-hover:text-emerald-700 transition-colors">
-                        {elephant.name}
+                        {bilingualName}
                       </h3>
-                      {elephant.sinhalaName && (
-                        <span className="text-xs font-semibold text-emerald-800 font-sinhala truncate">
-                          ({elephant.sinhalaName})
-                        </span>
-                      )}
                       {elephant.verified && (
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600/20 shrink-0" />
                       )}
@@ -313,7 +308,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
 
                     <p className="text-xs text-zinc-500 truncate mt-0.5 flex items-center gap-1">
                       <Building2 className="w-3 h-3 text-emerald-700 flex-shrink-0" />
-                      <span className="truncate">{elephant.organization || elephant.location || 'Sri Lanka'}</span>
+                      <span className="truncate">{elephant.organization || elephant.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}</span>
                     </p>
 
                     <div className="flex items-center gap-2 mt-1.5">
@@ -324,7 +319,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
                             : 'bg-emerald-100 text-emerald-900'
                         }`}
                       >
-                        {isTusker ? 'Tusker' : 'Elephant'}
+                        {isTusker ? t.tusker : t.elephant}
                       </span>
                       {elephant.age && (
                         <span className="text-[10px] font-medium text-zinc-400">
@@ -340,7 +335,7 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
                   onClick={() => onSelectElephant(elephant)}
                   className="flex-shrink-0 px-3.5 py-2 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-transform active:scale-95 flex items-center gap-1 cursor-pointer"
                 >
-                  <span>{language === 'si' ? 'බලන්න' : 'View'}</span>
+                  <span>{t.view}</span>
                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>

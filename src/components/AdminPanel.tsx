@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Elephant,
   CulturalEvent,
@@ -37,11 +37,60 @@ import {
   FileText,
   Download,
   FileSpreadsheet,
-  Upload
+  Upload,
+  UploadCloud,
+  Camera,
+  Loader2,
+  Check
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Language, translations } from '../utils/translations';
 import { BulkImportElephants } from './BulkImportElephants';
+
+// Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
+const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Selected file is not an image'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
 interface AdminPanelProps {
   elephants: Elephant[];
@@ -162,6 +211,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Gallery Image Upload State & Ref
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
+  const [isDraggingOverGallery, setIsDraggingOverGallery] = useState(false);
 
   const showToast = (msg: string) => {
     setStatusMessage(msg);
@@ -329,7 +383,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  // Photo handlers
+  // Photo handlers & Gallery Uploader
+  const handleGalleryFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (fileArray.length === 0) return;
+
+    try {
+      setIsUploadingGallery(true);
+      const compressedUrls = await Promise.all(
+        fileArray.map((file) => compressImageFile(file, 1280, 1280, 0.85))
+      );
+
+      setFormData((prev) => {
+        const currentPhotos = prev.photos.filter(Boolean);
+        return {
+          ...prev,
+          photos: [...compressedUrls, ...currentPhotos],
+        };
+      });
+
+      showToast(`ඡායාරූප ${fileArray.length} ක් Gallery එකෙන් සාර්ථකව එක් කරන ලදී! (${fileArray.length} photo(s) uploaded)`);
+    } catch (err: any) {
+      console.error('Gallery upload error:', err);
+      alert('ඡායාරූපය upload කිරීමේදී දෝෂයක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } finally {
+      setIsUploadingGallery(false);
+      if (galleryInputRef.current) {
+        galleryInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleSinglePhotoFile = async (index: number, file: File) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    try {
+      setIsUploadingGallery(true);
+      const compressedUrl = await compressImageFile(file, 1280, 1280, 0.85);
+      setFormData((prev) => {
+        const next = [...prev.photos];
+        next[index] = compressedUrl;
+        return { ...prev, photos: next };
+      });
+      showToast('ඡායාරූපය යාවත්කාලීන කරන ලදී! (Photo updated from gallery)');
+    } catch (err) {
+      console.error(err);
+      alert('ඡායාරූපය upload කිරීමට නොහැකි විය.');
+    } finally {
+      setIsUploadingGallery(false);
+    }
+  };
+
+  const handleSetMainPhoto = (index: number) => {
+    setFormData((prev) => {
+      const selected = prev.photos[index];
+      if (!selected) return prev;
+      const remaining = prev.photos.filter((_, i) => i !== index);
+      return { ...prev, photos: [selected, ...remaining] };
+    });
+    showToast('ප්‍රධාන ඡායාරූපය (Main Cover Photo) ලෙස සකසන ලදී!');
+  };
+
   const handleAddPhotoField = () => {
     setFormData((prev) => ({ ...prev, photos: [...prev.photos, ''] }));
   };
@@ -1291,57 +1404,198 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
-              {/* 5. Photos Gallery Management */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-emerald-700" />
-                    <span>5. ඡායාරූප ගැලරිය (Photo Gallery URLs)</span>
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={handleAddPhotoField}
-                    className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Photo URL</span>
-                  </button>
+              {/* 5. Photos Gallery Management (Direct Gallery Upload & URL Support) */}
+              <div className="space-y-4 pt-4 border-t border-zinc-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-emerald-700" />
+                      <span>5. ඡායාරූප සහ ගැලරිය (Photographs & Gallery)</span>
+                    </h3>
+                    <p className="text-[11px] text-zinc-500">
+                      දුරකතනයේ Gallery එකෙන් කෙලින්ම ඡායාරූප upload කරන්න හෝ Photo URL එක්කරන්න.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Hidden Multi-file input for Gallery */}
+                    <input
+                      ref={galleryInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => e.target.files && handleGalleryFiles(e.target.files)}
+                    />
+                    
+                    <button
+                      type="button"
+                      disabled={isUploadingGallery}
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {isUploadingGallery ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <UploadCloud className="w-3.5 h-3.5" />
+                      )}
+                      <span>ගැලරියෙන් ඡායාරූප තෝරන්න (From Gallery)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAddPhotoField}
+                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>URL එකක් එක් කරන්න</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  {formData.photos.map((photo, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="w-10 h-10 rounded-lg bg-zinc-100 border border-zinc-200 overflow-hidden flex-shrink-0">
-                        {photo ? (
-                          <img src={photo} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <ImageIcon className="w-4 h-4 text-zinc-300 m-auto mt-3" />
-                        )}
-                      </div>
-                      <input
-                        type="url"
-                        value={photo}
-                        onChange={(e) => handleUpdatePhotoField(idx, e.target.value)}
-                        placeholder="https://images.unsplash.com/... or direct image link"
-                        className="flex-1 px-3.5 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none font-mono"
-                      />
-                      {formData.photos.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePhotoField(idx)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                {/* Primary Gallery Drag & Drop / Click-to-Upload Banner */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOverGallery(true);
+                  }}
+                  onDragLeave={() => setIsDraggingOverGallery(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOverGallery(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      handleGalleryFiles(e.dataTransfer.files);
+                    }
+                  }}
+                  onClick={() => galleryInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
+                    isDraggingOverGallery
+                      ? 'border-emerald-600 bg-emerald-50 scale-[1.01]'
+                      : 'border-emerald-200 bg-[#FAF9F5] hover:bg-emerald-50/40 hover:border-emerald-500'
+                  }`}
+                >
+                  {isUploadingGallery ? (
+                    <div className="flex flex-col items-center justify-center py-2 space-y-2">
+                      <Loader2 className="w-8 h-8 text-emerald-700 animate-spin" />
+                      <p className="text-xs font-bold text-emerald-900">
+                        ඡායාරූප සකසමින් පවතී... (Optimizing & Loading photos...)
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="flex flex-col items-center justify-center space-y-1.5">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                        <Camera className="w-5 h-5" />
+                      </div>
+                      <div className="font-bold text-xs text-[#062E22]">
+                        දුරකතනයේ / පරිගණකයේ Gallery එකෙන් ඡායාරූප මෙතැනට Drag & Drop කරන්න හෝ Click කරන්න
+                      </div>
+                      <p className="text-[10px] text-zinc-500">
+                        JPG, PNG, WebP (එක්වර ඡායාරූප කිහිපයක් තෝරාගත හැක / Multiple photos supported)
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Photos List & Controls */}
+                <div className="space-y-3">
+                  {formData.photos.map((photo, idx) => {
+                    const isMainCover = idx === 0;
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-2xl border transition-all ${
+                          isMainCover
+                            ? 'bg-amber-50/60 border-amber-300 shadow-2xs'
+                            : 'bg-[#FAF9F5] border-zinc-200'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          {/* Image preview & badges */}
+                          <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <div className="relative w-14 h-14 rounded-xl bg-zinc-200 border border-zinc-300 overflow-hidden flex-shrink-0 shadow-inner">
+                              {photo ? (
+                                <img src={photo} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <ImageIcon className="w-5 h-5 text-zinc-400 m-auto mt-4" />
+                              )}
+                              {isMainCover && (
+                                <div className="absolute top-0 left-0 bg-amber-400 text-zinc-950 p-0.5 rounded-br-lg shadow-sm">
+                                  <Crown className="w-3 h-3" />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-xs text-[#062E22]">
+                                  Photo #{idx + 1}
+                                </span>
+                                {isMainCover ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-300 text-amber-950 border border-amber-400">
+                                    ★ Cover Photo (ප්‍රධාන ඡායාරූපය)
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetMainPhoto(idx)}
+                                    className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer flex items-center gap-0.5"
+                                  >
+                                    <Crown className="w-3 h-3 text-amber-500" />
+                                    <span>ප්‍රධාන ඡායාරූපය කරන්න</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-1">
+                                {/* Single photo gallery file picker */}
+                                <label className="px-2.5 py-1 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-[10px] font-bold text-zinc-700 cursor-pointer flex items-center gap-1 shadow-2xs">
+                                  <Camera className="w-3 h-3 text-emerald-700" />
+                                  <span>{photo ? 'ගැලරියෙන් මාරු කරන්න' : 'Gallery එකෙන් තෝරන්න'}</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleSinglePhotoFile(idx, file);
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* URL text input & delete button */}
+                          <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-md">
+                            <input
+                              type="text"
+                              value={photo}
+                              onChange={(e) => handleUpdatePhotoField(idx, e.target.value)}
+                              placeholder="Image URL හෝ Base64 Data..."
+                              className="flex-1 px-3 py-1.5 bg-white border border-zinc-300 rounded-xl text-[11px] text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none font-mono"
+                            />
+                            {formData.photos.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhotoField(idx)}
+                                className="p-2 text-red-600 hover:bg-red-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                                title="Delete photo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Preset Authentic Sri Lankan Elephant Photos Pickers */}
-                <div className="pt-2">
-                  <span className="text-[11px] font-bold text-zinc-400 block mb-1.5">
-                    Or select from authentic curated Sri Lankan elephant photography:
+                <div className="pt-2 bg-[#FAF9F5] p-3 rounded-2xl border border-zinc-200/80">
+                  <span className="text-[11px] font-bold text-zinc-600 block mb-1.5 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>හෝ සත්‍යාපිත පෙරහැර ඡායාරූප එකතුවෙන් තෝරන්න (Preset Photo Library):</span>
                   </span>
                   <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                     {PRESET_ELEPHANT_PHOTOS.map((preset, i) => (
@@ -1350,12 +1604,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         onClick={() => {
                           if (!formData.photos.includes(preset)) {
                             setFormData({ ...formData, photos: [preset, ...formData.photos.filter(Boolean)] });
+                            showToast('Preset photo added!');
                           }
                         }}
-                        className="relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-600 transition-all group"
+                        className="relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-600 transition-all group shadow-2xs"
                       >
                         <img src={preset} alt="" className="w-full h-full object-cover group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white text-[10px] font-bold">
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white text-[10px] font-bold">
                           + Use
                         </div>
                       </div>

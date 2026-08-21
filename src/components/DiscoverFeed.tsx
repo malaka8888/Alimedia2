@@ -13,7 +13,7 @@ import {
   Play,
   UserCheck
 } from 'lucide-react';
-import { Language, translations } from '../utils/translations';
+import { Language, translations, formatBilingualElephantName, getElephantPrimarySecondaryNames } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 import { StoryViewerModal, StoryItem } from './StoryViewerModal';
 
@@ -37,7 +37,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   onShowNotification,
 }) => {
   const t = translations[language];
-  const { isFollowing, toggleFollowElephant } = useAuth();
+  const { isFollowing } = useAuth();
   const [likes, setLikes] = useState<{ [id: string]: number }>({});
   const [userLiked, setUserLiked] = useState<{ [id: string]: boolean }>({});
   const [savedPosts, setSavedPosts] = useState<{ [id: string]: boolean }>({});
@@ -67,7 +67,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     setSavedPosts((prev) => {
       const isNowSaved = !prev[id];
       if (isNowSaved) {
-        notify(language === 'si' ? `${name} සුරැකි ලැයිස්තුවට එක් විය (Saved)!` : `Saved ${name} to bookmarks!`);
+        notify(language === 'si' ? `${name} සුරැකි ලැයිස්තුවට එක් විය!` : `Saved ${name} to bookmarks!`);
       } else {
         notify(language === 'si' ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් විය.' : 'Removed from bookmarks.');
       }
@@ -97,9 +97,9 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     // Fallback: Copy link to clipboard
     try {
       await navigator.clipboard.writeText(shareUrl);
-      notify(language === 'si' ? 'සබැඳිය පිටපත් කරගන්නා ලදී (Link copied)!' : 'Link copied to clipboard!');
+      notify(language === 'si' ? 'සබැඳිය පිටපත් කරගන්නා ලදී!' : 'Link copied to clipboard!');
     } catch (err) {
-      notify(language === 'si' ? 'Link එක copy විය!' : 'Link ready to share!');
+      notify(language === 'si' ? 'සබැඳිය සූදානම්!' : 'Link ready to share!');
     }
   };
 
@@ -208,7 +208,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-extrabold text-[#062E22] uppercase tracking-wider">
-              {language === 'si' ? 'ඇත් කතා (Stories & Updates)' : 'Stories & Updates'}
+              {t.storiesUpdates}
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
@@ -218,7 +218,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
             className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>{language === 'si' ? 'Story එකක් දාන්න' : 'Add Story'}</span>
+            <span>{t.addStory}</span>
           </button>
         </div>
 
@@ -233,10 +233,10 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 <Plus className="w-5 h-5 stroke-[2.5]" />
               </div>
               <span className="text-[10px] font-extrabold leading-tight">
-                {language === 'si' ? 'Story එකක් එක් කරන්න' : 'Add Story'}
+                {t.addStoryBoxTitle}
               </span>
               <span className="text-[8px] text-amber-300 font-semibold mt-0.5">
-                Story Only / Post
+                {t.addStoryBoxSub}
               </span>
             </div>
           </div>
@@ -245,6 +245,10 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           {compiledStories.map((story, idx) => {
             const hasFollowedBadge = story.isFollowed;
             const isLive = story.linkedElephant?.isLive;
+            const bilingualName = formatBilingualElephantName(
+              { name: story.elephantName, sinhalaName: story.elephantSinhalaName },
+              language
+            );
 
             return (
               <div
@@ -278,11 +282,11 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     ) : hasFollowedBadge ? (
                       <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-400 text-zinc-950 shadow-xs">
                         <UserCheck className="w-2.5 h-2.5 stroke-[2.5]" />
-                        <span>FOLLOWING</span>
+                        <span>{t.following}</span>
                       </span>
                     ) : (
                       <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-emerald-700/90 text-white shadow-xs">
-                        {story.isTusker ? 'Tusker' : 'Elephant'}
+                        {story.isTusker ? t.tusker : t.elephant}
                       </span>
                     )}
 
@@ -291,7 +295,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     </div>
                   </div>
 
-                  {/* Bottom Avatar & Elephant Name */}
+                  {/* Bottom Avatar & Elephant Bilingual Name */}
                   <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 text-white">
                     <div className="w-5 h-5 rounded-full overflow-hidden border-2 border-emerald-400 flex-shrink-0 bg-emerald-950 shadow-xs">
                       <img
@@ -300,8 +304,8 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <span className="text-[10px] font-extrabold truncate drop-shadow">
-                      {story.elephantName}
+                    <span className="text-[10px] font-extrabold truncate drop-shadow" title={bilingualName}>
+                      {bilingualName}
                     </span>
                   </div>
                 </div>
@@ -319,10 +323,10 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs font-extrabold text-[#062E22] uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{language === 'si' ? 'නවතම ප්‍රජා සටහන් (Community Posts)' : 'Community Posts'}</span>
+              <span>{t.communityPosts}</span>
             </h3>
             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-              {feedPosts.length} Posts
+              {feedPosts.length} {language === 'si' ? 'සටහන්' : 'Posts'}
             </span>
           </div>
 
@@ -336,12 +340,17 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
             const captionText = post.caption || '';
             const isLongCaption = captionText.length > 110;
 
+            const bilingualName = formatBilingualElephantName(
+              { name: post.elephantName, sinhalaName: post.elephantSinhalaName || linkedElephant?.sinhalaName },
+              language
+            );
+
             return (
               <div
                 key={postId}
                 className="bg-white rounded-3xl p-3.5 sm:p-4 shadow-xs border border-zinc-200/80 transition-all space-y-2.5"
               >
-                {/* 1. Header: Elephant Profile */}
+                {/* 1. Header: Elephant Profile with Bilingual Name */}
                 <div className="flex items-center justify-between gap-2">
                   <div
                     onClick={() => linkedElephant && onSelectElephant(linkedElephant)}
@@ -360,22 +369,17 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="font-extrabold text-sm text-[#062E22] group-hover:text-emerald-700 transition-colors truncate">
-                          {post.elephantName}
+                          {bilingualName}
                         </h4>
-                        {post.elephantSinhalaName && (
-                          <span className="text-xs font-semibold text-emerald-800/80 font-sinhala truncate">
-                            ({post.elephantSinhalaName})
-                          </span>
-                        )}
                         {linkedElephant?.type === 'tusker' && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900">
-                            Tusker
+                            {t.tusker}
                           </span>
                         )}
                       </div>
                       <p className="text-[11px] text-zinc-500 truncate flex items-center gap-1">
                         <Building2 className="w-3 h-3 text-emerald-700 shrink-0" />
-                        <span>{linkedElephant?.organization || linkedElephant?.location || 'Sri Lanka'}</span>
+                        <span>{linkedElephant?.organization || linkedElephant?.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}</span>
                       </p>
                     </div>
                   </div>
@@ -424,24 +428,24 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
 
                     {/* SHARE BUTTON */}
                     <button
-                      onClick={() => handleShare(linkedElephant?.id || postId, post.elephantName, post.caption)}
+                      onClick={() => handleShare(linkedElephant?.id || postId, bilingualName, post.caption)}
                       className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-100/70 hover:bg-zinc-100 text-zinc-700 hover:text-emerald-800 transition-colors cursor-pointer"
-                      title="Share post"
+                      title={t.sharePost}
                     >
                       <Share2 className="w-4 h-4 stroke-[2]" />
-                      <span>{language === 'si' ? 'බෙදාහරින්න' : 'Share'}</span>
+                      <span>{t.sharePost}</span>
                     </button>
                   </div>
 
                   {/* SAVE / BOOKMARK BUTTON */}
                   <button
-                    onClick={() => handleBookmark(postId, post.elephantName)}
+                    onClick={() => handleBookmark(postId, bilingualName)}
                     className={`p-1.5 rounded-full transition-all cursor-pointer ${
                       isSaved
                         ? 'bg-emerald-100 text-emerald-900'
                         : 'bg-zinc-100/70 hover:bg-zinc-100 text-zinc-600 hover:text-[#062E22]'
                     }`}
-                    title="Save post"
+                    title={t.save}
                   >
                     <Bookmark
                       className={`w-4 h-4 ${isSaved ? 'fill-emerald-800 text-emerald-800' : 'stroke-[2]'}`}
@@ -453,7 +457,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 {captionText && (
                   <div className="text-xs text-zinc-800 pt-0.5 leading-relaxed">
                     <span className="font-bold text-[#062E22] mr-1.5">
-                      {post.elephantName}
+                      {bilingualName}
                     </span>
                     <span>
                       {isLongCaption && !isExpanded
@@ -465,9 +469,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                         onClick={() => toggleCaption(postId)}
                         className="ml-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
                       >
-                        {isExpanded
-                          ? (language === 'si' ? 'අඩුවෙන් පෙන්වන්න (See less)' : 'See less')
-                          : (language === 'si' ? 'තව කියවන්න (See more)' : 'See more')}
+                        {isExpanded ? t.seeLess : t.seeMore}
                       </button>
                     )}
                   </div>
@@ -484,13 +486,13 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                       />
                     </div>
                     <span className="truncate">
-                      {language === 'si' ? 'ඡායාරූපය:' : 'By:'}{' '}
+                      {t.by}:{' '}
                       <b className="text-[#062E22] font-semibold">{post.authorUsername || post.authorName}</b>
                     </span>
                   </div>
 
                   <span className="text-[10px] text-zinc-400 shrink-0">
-                    {language === 'si' ? 'සහභාගීත්ව සටහනක්' : 'Community'}
+                    {t.community}
                   </span>
                 </div>
               </div>
@@ -505,10 +507,10 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1 pt-1">
           <h3 className="text-xs font-extrabold text-[#062E22] uppercase tracking-wider">
-            {language === 'si' ? 'හීලෑ ඇත් රජවරුන්ගේ ලේඛනාගාරය' : 'Verified Elephant Registry'}
+            {t.verifiedRegistry}
           </h3>
           <span className="text-[10px] text-zinc-400">
-            {elephants.length} Elephants
+            {elephants.length} {language === 'si' ? 'හීලෑ ඇත් වාර්තා' : 'Elephants'}
           </span>
         </div>
 
@@ -523,6 +525,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           const isExpanded = !!expandedCaptions[elephantId];
           const descriptionText = elephant.description || '';
           const isLongDescription = descriptionText.length > 120;
+          const bilingualName = formatBilingualElephantName(elephant, language);
 
           const postImage = elephant.photos && elephant.photos.length > 0
             ? elephant.photos[0]
@@ -552,22 +555,17 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <h3 className="font-bold text-sm text-[#062E22] group-hover:text-emerald-700 transition-colors truncate">
-                        {elephant.name}
+                        {bilingualName}
                       </h3>
-                      {elephant.sinhalaName && (
-                        <span className="text-xs font-semibold text-emerald-800/80 font-sinhala truncate">
-                          ({elephant.sinhalaName})
-                        </span>
-                      )}
                       {elephant.verified && (
-                        <span title="Verified Domesticated Sri Lankan Elephant" className="shrink-0">
+                        <span title={t.verifiedBadge} className="shrink-0">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600/20" />
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-zinc-500 truncate flex items-center gap-1">
                       <Building2 className="w-3 h-3 text-emerald-700 shrink-0" />
-                      <span className="truncate">{elephant.organization || elephant.location || 'Sri Lanka'}</span>
+                      <span className="truncate">{elephant.organization || elephant.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}</span>
                     </p>
                   </div>
                 </div>
@@ -608,7 +606,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                         : 'bg-emerald-800/90 text-white'
                     }`}
                   >
-                    {isTusker ? 'Tusker' : 'Elephant'}
+                    {isTusker ? t.tusker : t.elephant}
                   </span>
                 </div>
               </div>
@@ -635,24 +633,24 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
 
                   {/* SHARE BUTTON */}
                   <button
-                    onClick={() => handleShare(elephantId, elephant.name, elephant.description)}
+                    onClick={() => handleShare(elephantId, bilingualName, elephant.description)}
                     className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-100/70 hover:bg-zinc-100 text-zinc-700 hover:text-emerald-800 transition-colors cursor-pointer"
-                    title="Share elephant profile"
+                    title={t.sharePost}
                   >
                     <Share2 className="w-4 h-4 stroke-[2]" />
-                    <span>{language === 'si' ? 'බෙදාහරින්න' : 'Share'}</span>
+                    <span>{t.sharePost}</span>
                   </button>
                 </div>
 
                 {/* SAVE / BOOKMARK BUTTON */}
                 <button
-                  onClick={() => handleBookmark(elephantId, elephant.name)}
+                  onClick={() => handleBookmark(elephantId, bilingualName)}
                   className={`p-1.5 rounded-full transition-all cursor-pointer ${
                     isSaved
                       ? 'bg-emerald-100 text-emerald-900'
                       : 'bg-zinc-100/70 hover:bg-zinc-100 text-zinc-600 hover:text-[#062E22]'
                   }`}
-                  title="Save to bookmarks"
+                  title={t.save}
                 >
                   <Bookmark
                     className={`w-4 h-4 ${isSaved ? 'fill-emerald-800 text-emerald-800' : 'stroke-[2]'}`}
@@ -664,7 +662,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               {descriptionText && (
                 <div className="text-xs text-zinc-800 pt-0.5 leading-relaxed">
                   <span className="font-bold text-[#062E22] mr-1.5">
-                    {elephant.name}
+                    {bilingualName}
                   </span>
                   <span>
                     {isLongDescription && !isExpanded
@@ -676,9 +674,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                       onClick={() => toggleCaption(elephantId)}
                       className="ml-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
                     >
-                      {isExpanded
-                        ? (language === 'si' ? 'අඩුවෙන් පෙන්වන්න (See less)' : 'See less')
-                        : (language === 'si' ? 'තව කියවන්න (See more)' : 'See more')}
+                      {isExpanded ? t.seeLess : t.seeMore}
                     </button>
                   )}
                 </div>
@@ -687,12 +683,12 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               {/* 5. Mahout & Registry Tag */}
               <div className="pt-1.5 border-t border-zinc-100 flex items-center justify-between text-[11px] text-zinc-500">
                 <span className="truncate">
-                  {language === 'si' ? 'ඇත්ගොව්වා:' : 'Mahout:'}{' '}
-                  <b className="text-[#062E22] font-semibold">{elephant.mahout || 'National Custodians'}</b>
+                  {t.mahout}:{' '}
+                  <b className="text-[#062E22] font-semibold">{elephant.mahout || (language === 'si' ? 'භාරකාර ඇත්ගොව්වන්' : 'National Custodians')}</b>
                 </span>
 
                 <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
-                  {elephant.category === 'temple' ? 'Temple Tusker' : 'Domesticated'}
+                  {elephant.category === 'temple' ? (language === 'si' ? 'විහාරස්ථ ඇතා' : 'Temple Tusker') : (language === 'si' ? 'හීලෑ ඇතා' : 'Domesticated')}
                 </span>
               </div>
             </div>

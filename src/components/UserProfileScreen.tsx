@@ -1,22 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../firebase/authContext';
 import { Elephant } from '../types/elephant';
-import { Language, translations } from '../utils/translations';
+import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import {
-  User as UserIcon,
   LogOut,
   ShieldCheck,
   Mail,
-  Heart,
   Crown,
-  Sparkles,
-  ExternalLink,
   Edit3,
   CheckCircle2,
-  Share2,
-  Grid,
-  Bookmark,
-  Building2,
   ArrowRight,
   AlertCircle
 } from 'lucide-react';
@@ -35,11 +27,11 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
   onSelectElephant,
   onOpenDirectory,
 }) => {
-  const { user, profile, loading, signInWithGoogle, signOut, toggleFollowElephant, isFollowing, followedElephantIds, updateBio } = useAuth();
+  const { user, profile, signInWithGoogle, signOut, toggleFollowElephant, isFollowing, followedElephantIds, updateBio } = useAuth();
   const t = translations[language];
 
   const [isEditingBio, setIsEditingBio] = useState(false);
-  const [bioInput, setBioInput] = useState(profile?.bio || 'Revered Sri Lankan Elephant enthusiast & heritage lover 🐘✨');
+  const [bioInput, setBioInput] = useState(profile?.bio || (language === 'si' ? 'ශ්‍රී ලාංකීය හීලෑ අලි ඇතුන්ට ආදරය කරන කෙනෙක් 🐘✨' : 'Revered Sri Lankan Elephant enthusiast & heritage lover 🐘✨'));
   const [activeTab, setActiveTab] = useState<'following' | 'saved'>('following');
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -85,7 +77,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2">
               <img
                 src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
-                alt="අලිMedia"
+                alt="Aliya Media"
                 className="w-full h-full object-contain"
               />
             </div>
@@ -93,7 +85,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
 
           <div className="space-y-1.5 relative z-10">
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-              {language === 'si' ? 'අලිMedia වෙත සාදරයෙන් පිළිගනිමු' : 'Welcome to අලිMedia'}
+              {language === 'si' ? 'අලිMedia වෙත සාදරයෙන් පිළිගනිමු' : 'Welcome to Aliya Media'}
             </h2>
             <p className="text-xs sm:text-sm text-emerald-100/90 max-w-sm mx-auto leading-relaxed">
               {language === 'si'
@@ -113,7 +105,6 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 <div className="w-5 h-5 border-2 border-emerald-800 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  {/* Real Google SVG Logo */}
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
@@ -189,7 +180,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         <div className="bg-white rounded-3xl p-5 border border-zinc-200 shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-[#062E22]">
-              {language === 'si' ? 'ප්‍රකට හීලෑ ඇත්තු (Popular Tuskers)' : 'Famous Tuskers'}
+              {language === 'si' ? 'ප්‍රකට හීලෑ ඇත්තු' : 'Famous Tuskers'}
             </h3>
             <button
               onClick={onOpenDirectory}
@@ -203,6 +194,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {elephants.slice(0, 3).map((el) => {
               const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
+              const bilingualName = formatBilingualElephantName(el, language);
               return (
                 <div
                   key={el.id || el.name}
@@ -213,7 +205,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                     <img src={photo} alt={el.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-xs text-[#062E22] truncate">{el.name}</h4>
+                    <h4 className="font-bold text-xs text-[#062E22] truncate" title={bilingualName}>{bilingualName}</h4>
                     <p className="text-[10px] text-zinc-500 truncate">{el.organization || el.location}</p>
                   </div>
                 </div>
@@ -307,13 +299,13 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                   onClick={() => setIsEditingBio(false)}
                   className="px-3 py-1 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100 cursor-pointer"
                 >
-                  Cancel
+                  {language === 'si' ? 'අවලංගු කරන්න' : 'Cancel'}
                 </button>
                 <button
                   onClick={handleSaveBio}
                   className="px-4 py-1 rounded-lg text-xs font-bold bg-[#062E22] text-white hover:bg-emerald-900 cursor-pointer shadow-xs"
                 >
-                  Save
+                  {language === 'si' ? 'සුරකින්න' : 'Save'}
                 </button>
               </div>
             </div>
@@ -349,7 +341,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               {followedTuskersCount}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-              {language === 'si' ? 'ඇත්තු (Tuskers)' : 'Tuskers'}
+              {language === 'si' ? 'ඇත්තු' : 'Tuskers'}
             </div>
           </div>
 
@@ -358,7 +350,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               Active
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-              Status
+              {language === 'si' ? 'තත්ත්වය' : 'Status'}
             </div>
           </div>
         </div>
@@ -413,7 +405,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 onClick={() => setActiveTab('saved')}
                 className="px-5 py-2 rounded-full bg-[#062E22] text-white text-xs font-bold hover:bg-emerald-900 transition-all cursor-pointer shadow-xs"
               >
-                {language === 'si' ? 'ඇතුන් සොයා බලන්න (Discover)' : 'Explore Elephants'}
+                {language === 'si' ? 'ඇතුන් සොයා බලන්න' : 'Explore Elephants'}
               </button>
             </div>
           ) : (
@@ -421,6 +413,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               {followedElephantsList.map((el) => {
                 const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
                 const isTusker = el.type === 'tusker';
+                const bilingualName = formatBilingualElephantName(el, language);
 
                 return (
                   <div
@@ -436,7 +429,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1">
-                          <h4 className="font-bold text-xs text-[#062E22] truncate">{el.name}</h4>
+                          <h4 className="font-bold text-xs text-[#062E22] truncate" title={bilingualName}>{bilingualName}</h4>
                           {isTusker && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
                         </div>
                         <p className="text-[10px] text-zinc-500 truncate">{el.organization || el.location}</p>
@@ -447,7 +440,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                       onClick={() => el.id && toggleFollowElephant(el.id)}
                       className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 hover:bg-red-50 text-zinc-600 hover:text-red-600 border border-zinc-200 transition-colors cursor-pointer shrink-0"
                     >
-                      Following
+                      {language === 'si' ? 'Following' : 'Following'}
                     </button>
                   </div>
                 );
@@ -462,7 +455,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-              {language === 'si' ? 'යෝජිත හීලෑ ඇත්තු (Suggested to Follow)' : 'Suggested to Follow'}
+              {language === 'si' ? 'යෝජිත හීලෑ ඇත්තු' : 'Suggested to Follow'}
             </h3>
             <button
               onClick={onOpenDirectory}
@@ -477,6 +470,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
               const isTusker = el.type === 'tusker';
               const followingThis = el.id ? isFollowing(el.id) : false;
+              const bilingualName = formatBilingualElephantName(el, language);
 
               return (
                 <div
@@ -492,7 +486,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
-                        <h4 className="font-bold text-xs text-[#062E22] truncate">{el.name}</h4>
+                        <h4 className="font-bold text-xs text-[#062E22] truncate" title={bilingualName}>{bilingualName}</h4>
                         {isTusker && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
                       </div>
                       <p className="text-[10px] text-zinc-500 truncate">{el.organization || el.location}</p>
@@ -507,7 +501,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                         : 'bg-[#062E22] text-white hover:bg-emerald-800 shadow-2xs'
                     }`}
                   >
-                    {followingThis ? 'Following' : '+ Follow'}
+                    {followingThis ? 'Following' : (language === 'si' ? '+ Follow' : '+ Follow')}
                   </button>
                 </div>
               );
