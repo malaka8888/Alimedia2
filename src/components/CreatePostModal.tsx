@@ -16,7 +16,8 @@ import {
   LogIn,
   Link as LinkIcon,
   Radio,
-  Share2
+  Share2,
+  Lock
 } from 'lucide-react';
 import { ElephantIcon } from './ElephantIcon';
 
@@ -297,81 +298,128 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             )}
           </div>
 
-          {/* STEP 2: Mandatory Elephant Selector */}
+          {/* STEP 2: Mandatory Elephant Selector or Locked Profile Card */}
           <div className="space-y-1.5">
             <label className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>2. {language === 'si' ? 'අලියා / ඇතා තෝරන්න' : 'Select Elephant Profile'} *</span>
+              <span>
+                2. {preselectedElephantId && selectedElephantObj
+                  ? (language === 'si' ? 'අදාළ අලි පැතිකඩ (Locked to this profile)' : 'Elephant Profile (Locked)')
+                  : (language === 'si' ? 'අලියා / ඇතා තෝරන්න' : 'Select Elephant Profile')} *
+              </span>
             </label>
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-3" />
-              <input
-                type="text"
-                placeholder={language === 'si' ? 'අලියාගේ නම සොයන්න (උදා: Indiraja, කණ්ඩුල)...' : 'Search elephant by name...'}
-                value={elephantSearch}
-                onChange={(e) => setElephantSearch(e.target.value)}
-                className="w-full pl-8.5 pr-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50"
-              />
-            </div>
-
-            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-zinc-200 rounded-2xl p-2 bg-[#FAF9F5]">
-              {filteredElephants.length === 0 ? (
-                <div className="p-3 text-center text-xs text-zinc-400">
-                  {language === 'si' ? 'අලි වාර්තා හමු නොවීය.' : 'No elephants found.'}
+            {preselectedElephantId && selectedElephantObj ? (
+              <div className="p-3.5 bg-gradient-to-r from-emerald-950 via-[#062E22] to-emerald-900 rounded-2xl text-white shadow-sm space-y-2 border border-emerald-700/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-amber-300 flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>{language === 'si' ? 'තෝරාගත් අලි පැතිකඩ' : 'Target Elephant Profile'}</span>
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 shadow-xs">
+                    {selectedElephantObj.type === 'tusker' ? t.tusker : t.elephant}
+                  </span>
                 </div>
-              ) : (
-                filteredElephants.map((el) => {
-                  const isSelected = selectedElephantId === el.id;
-                  const thumb = el.photos && el.photos.length > 0 ? el.photos[0] : '';
-                  const isTusker = el.type === 'tusker';
-                  const bilingualName = formatBilingualElephantName(el, language);
 
-                  return (
-                    <div
-                      key={el.id}
-                      onClick={() => el.id && setSelectedElephantId(el.id)}
-                      className={`p-2 rounded-xl flex items-center justify-between gap-2.5 cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-[#062E22] text-white shadow-xs'
-                          : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200/80'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-200 shrink-0">
-                          <img src={thumb} alt={el.name} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1">
-                            <span className="font-bold text-xs truncate">{bilingualName}</span>
-                          </div>
-                          <p className={`text-[9px] truncate ${isSelected ? 'text-emerald-100/80' : 'text-zinc-400'}`}>
-                            {el.organization || el.location}
-                          </p>
-                        </div>
-                      </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 border-2 border-amber-400 shrink-0 shadow-inner">
+                    <img
+                      src={selectedElephantObj.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80'}
+                      alt={selectedElephantObj.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-extrabold text-sm text-white truncate">
+                      {formatBilingualElephantName(selectedElephantObj, language)}
+                    </h4>
+                    <p className="text-[11px] text-emerald-200/90 truncate">
+                      {selectedElephantObj.organization || selectedElephantObj.location || 'Sri Lanka'}
+                    </p>
+                  </div>
+                </div>
 
-                      <div className="shrink-0 flex items-center gap-1">
-                        {isTusker && (
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isSelected ? 'bg-amber-400 text-zinc-950' : 'bg-amber-100 text-amber-900'}`}>
-                            {t.tusker}
-                          </span>
-                        )}
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-emerald-300" />
-                        )}
-                      </div>
+                <div className="pt-2 border-t border-emerald-800/80 flex items-center gap-1.5 text-[11px] text-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>
+                    {language === 'si'
+                      ? `මෙම ඡායාරූපය/පෝස්ට් එක ${selectedElephantObj.name} පැතිකඩට පමණක් එක්වේ.`
+                      : `Photo/post will be uploaded exclusively to ${selectedElephantObj.name}.`}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder={language === 'si' ? 'අලියාගේ නම සොයන්න (උදා: Indiraja, කණ්ඩුල)...' : 'Search elephant by name...'}
+                    value={elephantSearch}
+                    onChange={(e) => setElephantSearch(e.target.value)}
+                    className="w-full pl-8.5 pr-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50"
+                  />
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-zinc-200 rounded-2xl p-2 bg-[#FAF9F5]">
+                  {filteredElephants.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-zinc-400">
+                      {language === 'si' ? 'අලි වාර්තා හමු නොවීය.' : 'No elephants found.'}
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  ) : (
+                    filteredElephants.map((el) => {
+                      const isSelected = selectedElephantId === el.id;
+                      const thumb = el.photos && el.photos.length > 0 ? el.photos[0] : '';
+                      const isTusker = el.type === 'tusker';
+                      const bilingualName = formatBilingualElephantName(el, language);
 
-            {selectedElephantObj && (
-              <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1 pt-0.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                <span>{language === 'si' ? 'තෝරාගත් ඇතා:' : 'Target:'} <b>{formatBilingualElephantName(selectedElephantObj, language)}</b></span>
-              </p>
+                      return (
+                        <div
+                          key={el.id}
+                          onClick={() => el.id && setSelectedElephantId(el.id)}
+                          className={`p-2 rounded-xl flex items-center justify-between gap-2.5 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'bg-[#062E22] text-white shadow-xs'
+                              : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200/80'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-200 shrink-0">
+                              <img src={thumb} alt={el.name} className="w-full h-full object-cover" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold text-xs truncate">{bilingualName}</span>
+                              </div>
+                              <p className={`text-[9px] truncate ${isSelected ? 'text-emerald-100/80' : 'text-zinc-400'}`}>
+                                {el.organization || el.location}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-1">
+                            {isTusker && (
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isSelected ? 'bg-amber-400 text-zinc-950' : 'bg-amber-100 text-amber-900'}`}>
+                                {t.tusker}
+                              </span>
+                            )}
+                            {isSelected && (
+                              <Check className="w-4 h-4 text-emerald-300" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {selectedElephantObj && (
+                  <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1 pt-0.5">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>{language === 'si' ? 'තෝරාගත් ඇතා:' : 'Target:'} <b>{formatBilingualElephantName(selectedElephantObj, language)}</b></span>
+                  </p>
+                )}
+              </>
             )}
           </div>
 

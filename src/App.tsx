@@ -45,8 +45,53 @@ export default function App() {
   const [isCreatePostStoryOnly, setIsCreatePostStoryOnly] = useState<boolean>(false);
 
   const [isSeeding, setIsSeeding] = useState<boolean>(false);
-  const [language, setLanguage] = useState<Language>('si');
+
+  // Auto-select English language by default, with localStorage persistence
+  const [language, setLanguage] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem('alimedia_lang');
+      if (saved === 'en' || saved === 'si') return saved;
+    } catch {}
+    return 'en'; // Default auto-selected language is English
+  });
+
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Light / Dark Mode State: Defaults to Light mode (false), persists in localStorage
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('alimedia_theme');
+      if (saved === 'dark') return true;
+      if (saved === 'light') return false;
+      return false; // Default to Light mode
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('alimedia_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('alimedia_theme', 'light');
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => !prev);
+  };
+
+  const toggleLanguage = () => {
+    setLanguage((prev) => {
+      const next: Language = prev === 'si' ? 'en' : 'si';
+      try {
+        localStorage.setItem('alimedia_lang', next);
+      } catch {}
+      return next;
+    });
+  };
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -292,10 +337,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F4] text-[#062E22] flex flex-col font-sans antialiased selection:bg-emerald-200">
+    <div className="min-h-screen bg-[#F7F8F4] dark:bg-[#0A1411] text-[#062E22] dark:text-[#E2E8F0] flex flex-col font-sans antialiased selection:bg-emerald-200 transition-colors">
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] dark:bg-emerald-950 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{notification}</span>
         </div>
@@ -306,19 +351,21 @@ export default function App() {
         currentTab={currentTab}
         onSelectTab={handleTabChange}
         language={language}
-        onToggleLanguage={() => setLanguage((prev) => (prev === 'si' ? 'en' : 'si'))}
+        onToggleLanguage={toggleLanguage}
         onOpenAdmin={() => {
           setIsAdminOpen(true);
           window.location.hash = 'admin';
         }}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 w-full max-w-lg mx-auto px-3.5 sm:px-4 pt-3">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-3">
-            <div className="w-10 h-10 border-3 border-emerald-800 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-bold text-emerald-900/80">
+            <div className="w-10 h-10 border-3 border-emerald-800 dark:border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-bold text-emerald-900/80 dark:text-emerald-300">
               {language === 'si' ? 'හීලෑ අලි වාර්තා පූරණය වෙමින් පවතී...' : 'Loading verified elephant registry...'}
             </p>
           </div>
@@ -342,6 +389,7 @@ export default function App() {
             onOpenCreatePost={(id, isStoryOnly) => handleOpenCreatePost(id, isStoryOnly)}
             onSelectPhoto={(photoUrl) => setLightboxPhoto(photoUrl)}
             onShowNotification={showNotification}
+            onOpenDirectory={() => handleTabChange('elephant')}
           />
         ) : currentTab === 'elephant' ? (
           /* /Elephant tab: Trending spotlight (Top 2 followed + Top 2 liked) + directory */
@@ -366,10 +414,10 @@ export default function App() {
           <div className="space-y-4 py-3 pb-24 animate-fadeIn">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-extrabold text-[#062E22]">
+                <h2 className="text-xl font-extrabold text-[#062E22] dark:text-emerald-200">
                   {language === 'si' ? 'පෙරහැර සහ සංස්කෘතික නිවේදන' : 'Perahera & Cultural Notices'}
                 </h2>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
                   {language === 'si' ? 'හීලෑ අලි සහභාගී වන පෙරහැර කාලසටහන' : 'Festivals featuring Sri Lankan tuskers'}
                 </p>
               </div>
@@ -380,38 +428,38 @@ export default function App() {
               {events.map((ev) => (
                 <div
                   key={ev.id || ev.title}
-                  className="bg-white p-4 sm:p-5 rounded-3xl border border-zinc-200 shadow-2xs space-y-2.5 hover:shadow-sm transition-all"
+                  className="bg-white dark:bg-[#121F1B] p-4 sm:p-5 rounded-3xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-2.5 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h4 className="text-sm font-extrabold text-[#062E22]">{ev.title}</h4>
+                      <h4 className="text-sm font-extrabold text-[#062E22] dark:text-emerald-100">{ev.title}</h4>
                       {ev.sinhalaTitle && (
-                        <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                        <p className="text-xs text-emerald-800 dark:text-emerald-300 font-sinhala">{ev.sinhalaTitle}</p>
                       )}
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300/40">
                       Perahera
                     </span>
                   </div>
 
-                  <p className="text-xs text-zinc-600 leading-relaxed">{ev.description}</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">{ev.description}</p>
 
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 pt-2 border-t border-zinc-100 font-medium">
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 dark:text-zinc-400 pt-2 border-t border-zinc-100 dark:border-zinc-800 font-medium">
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                      <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                       <span>{ev.location}</span>
                     </span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                      <Calendar className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                       <span>{ev.date}</span>
                     </span>
                   </div>
 
                   {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                    <div className="bg-[#FAF9F5] p-2.5 rounded-xl border border-zinc-200/80 flex items-center gap-1.5 text-xs text-[#062E22]">
-                      <Crown className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    <div className="bg-[#FAF9F5] dark:bg-[#1A2C26] p-2.5 rounded-xl border border-zinc-200/80 dark:border-emerald-950/50 flex items-center gap-1.5 text-xs text-[#062E22] dark:text-emerald-100">
+                      <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                       <span className="font-bold">සහභාගී වන ඇත්තු:</span>
-                      <span className="text-zinc-600 truncate">{ev.participatingElephants.join(', ')}</span>
+                      <span className="text-zinc-600 dark:text-zinc-300 truncate">{ev.participatingElephants.join(', ')}</span>
                     </div>
                   )}
                 </div>

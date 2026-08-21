@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Globe, User } from 'lucide-react';
+import { Shield, Globe, User, Moon, Sun } from 'lucide-react';
 import { ElephantIcon } from './ElephantIcon';
 import { Language, translations } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
@@ -12,6 +12,8 @@ interface NavbarProps {
   language: Language;
   onToggleLanguage: () => void;
   onOpenAdmin: () => void;
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -20,20 +22,22 @@ export const Navbar: React.FC<NavbarProps> = ({
   language,
   onToggleLanguage,
   onOpenAdmin,
+  darkMode,
+  onToggleDarkMode,
 }) => {
   const t = translations[language];
   const { user, profile } = useAuth();
   const userPhoto = profile?.photoURL || user?.photoURL;
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FAF9F5]/95 backdrop-blur-md border-b border-zinc-200/80">
+    <header className="sticky top-0 z-40 bg-[#FAF9F5]/95 dark:bg-[#0B1411]/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-emerald-950/70 transition-colors">
       <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Brand Logo */}
         <div
           onClick={() => onSelectTab('home')}
           className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <div className="w-9 h-9 rounded-xl overflow-hidden shadow-xs flex items-center justify-center bg-white border border-zinc-200/80 group-hover:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl overflow-hidden shadow-xs flex items-center justify-center bg-white dark:bg-[#121F1B] border border-zinc-200/80 dark:border-emerald-900/40 group-hover:scale-105 transition-transform">
             <img
               src={LOGO_URL}
               alt="අලිMedia Logo"
@@ -42,22 +46,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
-              <span className="font-extrabold text-lg tracking-tight text-[#062E22] group-hover:text-emerald-800 transition-colors">
-                අලි<span className="text-emerald-600 font-black">Media</span>
+              <span className="font-extrabold text-lg tracking-tight text-[#062E22] dark:text-emerald-100 group-hover:text-emerald-800 dark:group-hover:text-emerald-300 transition-colors">
+                අලි<span className="text-emerald-600 dark:text-amber-400 font-black">Media</span>
               </span>
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              <span className="w-1.5 h-1.5 bg-emerald-500 dark:bg-amber-400 rounded-full" />
             </div>
           </div>
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden sm:flex items-center gap-1 bg-white p-1 rounded-full border border-zinc-200 shadow-2xs">
+        <nav className="hidden sm:flex items-center gap-1 bg-white dark:bg-[#121F1B] p-1 rounded-full border border-zinc-200 dark:border-emerald-950 shadow-2xs">
           <button
             onClick={() => onSelectTab('home')}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               currentTab === 'home'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'text-zinc-600 hover:text-zinc-900'
+                ? 'bg-[#062E22] text-white dark:bg-emerald-600 dark:text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             {language === 'si' ? 'මුල් පිටුව (Feed)' : 'Feed'}
@@ -66,8 +70,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onSelectTab('elephant')}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               currentTab === 'elephant'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'text-zinc-600 hover:text-zinc-900'
+                ? 'bg-[#062E22] text-white dark:bg-emerald-600 dark:text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             <ElephantIcon className="w-3.5 h-3.5" />
@@ -77,8 +81,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onSelectTab('profile')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               currentTab === 'profile'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'text-zinc-600 hover:text-zinc-900'
+                ? 'bg-[#062E22] text-white dark:bg-emerald-600 dark:text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             {userPhoto ? (
@@ -90,21 +94,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </nav>
 
-        {/* Language, User & Admin Tools */}
-        <div className="flex items-center gap-2">
+        {/* Language, Dark Mode, User & Admin Tools */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={onToggleDarkMode}
+            className="p-2 rounded-full bg-white dark:bg-[#121F1B] hover:bg-zinc-100 dark:hover:bg-[#1A2C27] border border-zinc-200 dark:border-emerald-900/40 text-[#062E22] dark:text-amber-400 transition-colors cursor-pointer shadow-2xs"
+            title={darkMode ? (language === 'si' ? 'Light Mode වෙත මාරුවන්න' : 'Switch to Light Mode') : (language === 'si' ? 'Dark Mode වෙත මාරුවන්න' : 'Switch to Dark Mode')}
+            aria-label="Toggle Dark / Light Theme"
+          >
+            {darkMode ? (
+              <Sun className="w-4 h-4 text-amber-400 animate-fadeIn" />
+            ) : (
+              <Moon className="w-4 h-4 text-emerald-800 animate-fadeIn" />
+            )}
+          </button>
+
+          {/* Language Toggle */}
           <button
             onClick={onToggleLanguage}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-zinc-100 border border-zinc-200 text-xs font-bold text-[#062E22] transition-colors cursor-pointer shadow-2xs"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#121F1B] hover:bg-zinc-100 dark:hover:bg-[#1A2C27] border border-zinc-200 dark:border-emerald-900/40 text-xs font-bold text-[#062E22] dark:text-zinc-100 transition-colors cursor-pointer shadow-2xs"
             title="Toggle Sinhala / English"
           >
-            <Globe className="w-3.5 h-3.5 text-emerald-700" />
+            <Globe className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
             <span>{language === 'si' ? 'සිංහල' : 'English'}</span>
           </button>
 
           {/* Admin console button */}
           <button
             onClick={onOpenAdmin}
-            className="p-2 rounded-full bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-600 hover:text-[#062E22] transition-colors cursor-pointer shadow-2xs"
+            className="p-2 rounded-full bg-white dark:bg-[#121F1B] hover:bg-zinc-100 dark:hover:bg-[#1A2C27] border border-zinc-200 dark:border-emerald-900/40 text-zinc-600 dark:text-zinc-300 hover:text-[#062E22] dark:hover:text-amber-400 transition-colors cursor-pointer shadow-2xs"
             title="Registry & Admin Console"
           >
             <Shield className="w-4 h-4" />

@@ -45,7 +45,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
 }) => {
   const t = translations[language];
   const { isFollowing, toggleFollowElephant } = useAuth();
-  const [activeTab, setActiveTab] = useState<'details' | 'physical' | 'cultural' | 'gallery'>('details');
+  const [activeTab, setActiveTab] = useState<'gallery' | 'details' | 'physical' | 'cultural'>('gallery');
 
   const following = elephant.id ? isFollowing(elephant.id) : false;
   const isTusker = elephant.type === 'tusker';
@@ -107,10 +107,10 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   return (
     <div className="max-w-lg mx-auto w-full pb-28 animate-fadeIn">
       {/* Top Floating Control Bar */}
-      <div className="sticky top-14 z-30 bg-[#F7F8F4]/90 backdrop-blur-md py-2 px-1 flex items-center justify-between">
+      <div className="sticky top-14 z-30 bg-[#F7F8F4]/90 dark:bg-[#0A1411]/90 backdrop-blur-md py-2 px-1 flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-[#062E22] text-xs font-extrabold border border-zinc-200 shadow-2xs hover:bg-zinc-50 cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#121F1B] text-[#062E22] dark:text-emerald-100 text-xs font-extrabold border border-zinc-200 dark:border-emerald-950/70 shadow-2xs hover:bg-zinc-50 dark:hover:bg-emerald-950/40 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>{t.backToDirectory}</span>
@@ -119,7 +119,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleShare}
-            className="p-2 rounded-full bg-white text-zinc-700 hover:text-[#062E22] border border-zinc-200 shadow-2xs cursor-pointer"
+            className="p-2 rounded-full bg-white dark:bg-[#121F1B] text-zinc-700 dark:text-zinc-200 hover:text-[#062E22] dark:hover:text-amber-300 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs cursor-pointer"
             title={t.share}
           >
             <Share2 className="w-4 h-4" />
@@ -130,7 +130,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
             className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
               following
                 ? 'bg-amber-400 text-zinc-950 hover:bg-amber-500'
-                : 'bg-[#062E22] text-white hover:bg-emerald-800'
+                : 'bg-[#062E22] text-white hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600'
             }`}
           >
             {following ? (
@@ -149,7 +149,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
       </div>
 
       {/* Main Profile Header Card */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-zinc-200 shadow-2xs space-y-4 relative mt-2">
+      <div className="bg-white dark:bg-[#121F1B] rounded-3xl p-4 sm:p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-4 relative mt-2">
         {/* Cover Photo */}
         <div
           onClick={() => onSelectPhoto(heroPhoto)}
@@ -176,7 +176,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
               </span>
 
               {isMemorial && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-900/90 text-amber-300 border border-amber-400/40">
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-zinc-900/90 text-amber-300 border border-amber-400/40">
                   {t.memorial}
                 </span>
               )}
@@ -184,7 +184,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
 
             <div className="flex items-center gap-1">
               {elephant.verified && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/90 text-white shadow-md backdrop-blur-md">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600/90 text-white shadow-md backdrop-blur-md">
                   <ShieldCheck className="w-3 h-3" />
                   <span>{t.verified}</span>
                 </span>
@@ -209,9 +209,9 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         </div>
 
         {/* Stats Row: Followers, Posts, Photos */}
-        <div className="grid grid-cols-3 gap-2 py-2 border-y border-zinc-100 text-center">
+        <div className="grid grid-cols-3 gap-2 py-2 border-y border-zinc-100 dark:border-zinc-800 text-center">
           <div>
-            <div className="text-sm sm:text-base font-black text-[#062E22]">
+            <div className="text-sm sm:text-base font-black text-[#062E22] dark:text-emerald-100">
               {followerCount >= 1000 ? `${(followerCount / 1000).toFixed(1)}K` : followerCount}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -219,8 +219,8 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
             </div>
           </div>
 
-          <div className="border-x border-zinc-100">
-            <div className="text-sm sm:text-base font-black text-[#062E22]">
+          <div className="border-x border-zinc-100 dark:border-zinc-800">
+            <div className="text-sm sm:text-base font-black text-[#062E22] dark:text-emerald-100">
               {allPhotos.length}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -229,7 +229,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
           </div>
 
           <div>
-            <div className="text-sm sm:text-base font-black text-emerald-700">
+            <div className="text-sm sm:text-base font-black text-emerald-700 dark:text-emerald-400">
               {elephant.category === 'temple' ? (language === 'si' ? 'විහාරස්ථ' : 'Temple') : (language === 'si' ? 'හීලෑ' : 'Domestic')}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -239,23 +239,23 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         </div>
 
         {/* Location & Organization Quick Matrix */}
-        <div className="space-y-2 text-xs text-zinc-600">
+        <div className="space-y-2 text-xs text-zinc-600 dark:text-zinc-300">
           <div className="flex items-start gap-2">
-            <Building2 className="w-4 h-4 text-emerald-800 shrink-0 mt-0.5" />
-            <span className="font-semibold text-zinc-800">
+            <Building2 className="w-4 h-4 text-emerald-800 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <span className="font-semibold text-zinc-800 dark:text-zinc-200">
               {elephant.organization || (language === 'si' ? 'විහාරස්ථානය / සංවිධානය සටහන්ව නැත' : 'Temple / Owner not specified')}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-emerald-700 shrink-0" />
+            <MapPin className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
             <span>{elephant.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}</span>
           </div>
 
           {elephant.mahout && (
             <div className="flex items-center gap-2">
-              <User className="w-4 h-4 text-amber-700 shrink-0" />
-              <span>{t.mahout}: <strong className="text-zinc-800">{elephant.mahout}</strong></span>
+              <User className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0" />
+              <span>{t.mahout}: <strong className="text-zinc-800 dark:text-zinc-200">{elephant.mahout}</strong></span>
             </div>
           )}
         </div>
@@ -263,7 +263,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         {/* Add Photo Button Action */}
         <button
           onClick={() => onOpenCreatePost(elephant.id)}
-          className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-extrabold text-xs flex items-center justify-center gap-2 border border-emerald-200/80 transition-colors cursor-pointer"
+          className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-extrabold text-xs flex items-center justify-center gap-2 border border-emerald-200/80 dark:border-emerald-800/40 transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>{t.addPhotoStory}</span>
@@ -271,12 +271,12 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
       </div>
 
       {/* Tabs Row */}
-      <div className="flex border-b border-zinc-200 mt-4 bg-white rounded-2xl p-1 shadow-2xs">
+      <div className="flex border-b border-zinc-200 dark:border-emerald-950/70 mt-4 bg-white dark:bg-[#121F1B] rounded-2xl p-1 shadow-2xs">
         {[
+          { id: 'gallery', label: `${t.photoGallery} (${allPhotos.length})`, icon: Grid },
           { id: 'details', label: t.verifiedData, icon: Info },
           { id: 'physical', label: t.physicalTraits, icon: Sparkles },
           { id: 'cultural', label: t.culturalHeritage, icon: Award },
-          { id: 'gallery', label: `${t.photoGallery} (${allPhotos.length})`, icon: Grid },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -285,8 +285,8 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1 rounded-xl transition-all cursor-pointer ${
                 activeTab === tab.id
-                  ? 'bg-[#062E22] text-white shadow-xs'
-                  : 'text-zinc-500 hover:text-zinc-800'
+                  ? 'bg-[#062E22] text-white dark:bg-emerald-600 shadow-xs'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-white'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -296,148 +296,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         })}
       </div>
 
-      {/* Tab 1: Verified Details */}
-      {activeTab === 'details' && (
-        <div className="mt-3 bg-white rounded-3xl p-5 border border-zinc-200 shadow-2xs space-y-4">
-          <h3 className="text-xs font-black uppercase text-[#062E22] tracking-wider flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-emerald-700" />
-            <span>{t.basicInfo}</span>
-          </h3>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-3 rounded-2xl bg-[#FAF9F5] border border-zinc-200/70">
-              <span className="text-zinc-400 font-bold block text-[10px] uppercase">{t.age}</span>
-              <span className="font-extrabold text-[#062E22] text-sm">
-                {elephant.age ? `${elephant.age} ${t.years}` : t.noInfo}
-              </span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-[#FAF9F5] border border-zinc-200/70">
-              <span className="text-zinc-400 font-bold block text-[10px] uppercase">{t.gender}</span>
-              <span className="font-extrabold text-[#062E22] text-sm">
-                {elephant.gender === 'male' ? t.male : t.female}
-              </span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-[#FAF9F5] border border-zinc-200/70 col-span-2">
-              <span className="text-zinc-400 font-bold block text-[10px] uppercase">{t.organization}</span>
-              <span className="font-extrabold text-[#062E22] text-sm">
-                {elephant.organization || t.noInfo}
-              </span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-[#FAF9F5] border border-zinc-200/70 col-span-2">
-              <span className="text-zinc-400 font-bold block text-[10px] uppercase">{t.mahout}</span>
-              <span className="font-extrabold text-[#062E22] text-sm">
-                {elephant.mahout || t.noInfo}
-              </span>
-            </div>
-          </div>
-
-          {/* Description */}
-          {elephant.description && (
-            <div className="space-y-1.5 pt-2 border-t border-zinc-100">
-              <h4 className="text-xs font-bold text-[#062E22]">{t.description}</h4>
-              <p className="text-xs text-zinc-600 leading-relaxed whitespace-pre-line">
-                {elephant.description}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 2: Physical Traits & Tusks */}
-      {activeTab === 'physical' && (
-        <div className="mt-3 bg-white rounded-3xl p-5 border border-zinc-200 shadow-2xs space-y-4">
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-[#062E22] tracking-wider flex items-center gap-1.5">
-              <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>{t.tusks}</span>
-            </h3>
-            <p className="text-xs text-zinc-700 bg-amber-50/70 p-3 rounded-2xl border border-amber-200/60 leading-relaxed">
-              {elephant.tusks || (language === 'si' ? 'දළ පිහිටීම පිළිබඳ සටහනක් නොමැත.' : 'No specific tusk description available.')}
-            </p>
-          </div>
-
-          <div className="space-y-2 pt-2 border-t border-zinc-100">
-            <h3 className="text-xs font-black uppercase text-[#062E22] tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{t.physicalTraits}</span>
-            </h3>
-            <p className="text-xs text-zinc-700 bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200/60 leading-relaxed">
-              {elephant.physicalCharacteristics || (language === 'si' ? 'ශාරීරික ලක්ෂණ සටහන්ව නැත.' : 'No physical characteristics specified.')}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Cultural Heritage & Perahera */}
-      {activeTab === 'cultural' && (
-        <div className="mt-3 bg-white rounded-3xl p-5 border border-zinc-200 shadow-2xs space-y-4">
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-[#062E22] tracking-wider flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-amber-500" />
-              <span>{t.peraheraParticipation}</span>
-            </h3>
-            {elephant.peraheraParticipation && elephant.peraheraParticipation.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {elephant.peraheraParticipation.map((perahera, idx) => (
-                  <span
-                    key={idx}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200"
-                  >
-                    🎪 {perahera}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-400 italic">
-                {language === 'si' ? 'පෙරහැර සහභාගීත්ව වාර්තා සටහන්ව නැත.' : 'No recorded perahera festivals yet.'}
-              </p>
-            )}
-          </div>
-
-          {/* Sources & References */}
-          <div className="space-y-2 pt-3 border-t border-zinc-100">
-            <h3 className="text-xs font-black uppercase text-[#062E22] tracking-wider flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{t.sources}</span>
-            </h3>
-            {elephant.sources && elephant.sources.length > 0 ? (
-              <div className="space-y-2">
-                {elephant.sources.map((src, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-2xl bg-[#FAF9F5] border border-zinc-200/80 flex items-center justify-between text-xs gap-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-bold text-[#062E22] truncate">{src.title}</p>
-                      <p className="text-[10px] text-zinc-400">{src.publisher} {src.verifiedDate ? `(${src.verifiedDate})` : ''}</p>
-                    </div>
-                    {src.url && (
-                      <a
-                        href={src.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-[10px] font-bold flex items-center gap-1 shrink-0"
-                      >
-                        <span>Visit</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-400 italic">
-                {language === 'si' ? 'සත්‍යාපිත මූලාශ්‍ර වාර්තාවල අඩංගුයි.' : 'Verified through national Sri Lankan cultural records.'}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 4: Photo Gallery Grid */}
+      {/* Tab 1: Photo Gallery Grid (Primary View) */}
       {activeTab === 'gallery' && (
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -445,7 +304,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
               <div
                 key={idx}
                 onClick={() => onSelectPhoto(photo)}
-                className="relative aspect-square rounded-2xl overflow-hidden bg-zinc-100 cursor-pointer group shadow-2xs"
+                className="relative aspect-square rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer group shadow-2xs"
               >
                 <img
                   src={photo}
@@ -462,11 +321,152 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
           {/* Add more photos button */}
           <button
             onClick={() => onOpenCreatePost(elephant.id)}
-            className="w-full py-3 rounded-2xl border-2 border-dashed border-zinc-300 hover:border-emerald-700 bg-white text-xs font-bold text-[#062E22] flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            className="w-full py-3 rounded-2xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-emerald-700 dark:hover:border-emerald-500 bg-white dark:bg-[#121F1B] text-xs font-bold text-[#062E22] dark:text-emerald-200 flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>{t.addPhotoStory}</span>
           </button>
+        </div>
+      )}
+
+      {/* Tab 2: Verified Details */}
+      {activeTab === 'details' && (
+        <div className="mt-3 bg-white dark:bg-[#121F1B] rounded-3xl p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-4">
+          <h3 className="text-xs font-black uppercase text-[#062E22] dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            <span>{t.basicInfo}</span>
+          </h3>
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/70 dark:border-emerald-950/50">
+              <span className="text-zinc-400 dark:text-zinc-400 font-bold block text-[10px] uppercase">{t.age}</span>
+              <span className="font-extrabold text-[#062E22] dark:text-emerald-100 text-sm">
+                {elephant.age ? `${elephant.age} ${t.years}` : t.noInfo}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/70 dark:border-emerald-950/50">
+              <span className="text-zinc-400 dark:text-zinc-400 font-bold block text-[10px] uppercase">{t.gender}</span>
+              <span className="font-extrabold text-[#062E22] dark:text-emerald-100 text-sm">
+                {elephant.gender === 'male' ? t.male : t.female}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/70 dark:border-emerald-950/50 col-span-2">
+              <span className="text-zinc-400 dark:text-zinc-400 font-bold block text-[10px] uppercase">{t.organization}</span>
+              <span className="font-extrabold text-[#062E22] dark:text-emerald-100 text-sm">
+                {elephant.organization || t.noInfo}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/70 dark:border-emerald-950/50 col-span-2">
+              <span className="text-zinc-400 dark:text-zinc-400 font-bold block text-[10px] uppercase">{t.mahout}</span>
+              <span className="font-extrabold text-[#062E22] dark:text-emerald-100 text-sm">
+                {elephant.mahout || t.noInfo}
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          {elephant.description && (
+            <div className="space-y-1.5 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <h4 className="text-xs font-bold text-[#062E22] dark:text-emerald-200">{t.description}</h4>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-line">
+                {elephant.description}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 3: Physical Traits & Tusks */}
+      {activeTab === 'physical' && (
+        <div className="mt-3 bg-white dark:bg-[#121F1B] rounded-3xl p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-[#062E22] dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              <span>{t.tusks}</span>
+            </h3>
+            <p className="text-xs text-zinc-700 dark:text-zinc-200 bg-amber-50/70 dark:bg-amber-950/40 p-3 rounded-2xl border border-amber-200/60 dark:border-amber-900/40 leading-relaxed">
+              {elephant.tusks || (language === 'si' ? 'දළ පිහිටීම පිළිබඳ සටහනක් නොමැත.' : 'No specific tusk description available.')}
+            </p>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <h3 className="text-xs font-black uppercase text-[#062E22] dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{t.physicalTraits}</span>
+            </h3>
+            <p className="text-xs text-zinc-700 dark:text-zinc-200 bg-emerald-50/70 dark:bg-emerald-950/40 p-3 rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40 leading-relaxed">
+              {elephant.physicalCharacteristics || (language === 'si' ? 'ශාරීරික ලක්ෂණ සටහන්ව නැත.' : 'No physical characteristics specified.')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 4: Cultural Heritage & Perahera */}
+      {activeTab === 'cultural' && (
+        <div className="mt-3 bg-white dark:bg-[#121F1B] rounded-3xl p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-[#062E22] dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5 text-amber-500" />
+              <span>{t.peraheraParticipation}</span>
+            </h3>
+            {elephant.peraheraParticipation && elephant.peraheraParticipation.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {elephant.peraheraParticipation.map((perahera, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900/40"
+                  >
+                    🎪 {perahera}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                {language === 'si' ? 'පෙරහැර සහභාගීත්ව වාර්තා සටහන්ව නැත.' : 'No recorded perahera festivals yet.'}
+              </p>
+            )}
+          </div>
+
+          {/* Sources & References */}
+          <div className="space-y-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+            <h3 className="text-xs font-black uppercase text-[#062E22] dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              <span>{t.sources}</span>
+            </h3>
+            {elephant.sources && elephant.sources.length > 0 ? (
+              <div className="space-y-2">
+                {elephant.sources.map((src, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/80 dark:border-emerald-950/60 flex items-center justify-between text-xs gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-bold text-[#062E22] dark:text-emerald-100 truncate">{src.title}</p>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-400">{src.publisher} {src.verifiedDate ? `(${src.verifiedDate})` : ''}</p>
+                    </div>
+                    {src.url && (
+                      <a
+                        href={src.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 hover:bg-emerald-200 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 text-[10px] font-bold flex items-center gap-1 shrink-0"
+                      >
+                        <span>Visit</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                {language === 'si' ? 'සත්‍යාපිත මූලාශ්‍ර වාර්තාවල අඩංගුයි.' : 'Verified through national Sri Lankan cultural records.'}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

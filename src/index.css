@@ -9,10 +9,24 @@
     --color-emerald-accent: #10B981;
   }
 
+  html.dark {
+    --color-offwhite-bg: #0B1411;
+    --color-offwhite-card: #121F1B;
+    --color-darkgreen: #E2E8F0;
+    --color-darkgreen-light: #94A3B8;
+    color-scheme: dark;
+  }
+
   body {
     background-color: #F7F8F4;
     color: #062E22;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html.dark body {
+    background-color: #0A1411;
+    color: #E2E8F0;
   }
 }
 
