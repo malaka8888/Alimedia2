@@ -9,8 +9,6 @@ import {
   Sparkles,
   Building2,
   Radio,
-  UserPlus,
-  Check,
   Plus,
   Play,
   UserCheck
@@ -144,7 +142,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       }
     });
 
-    // 2. Stories from elephants the user is following (if not already represented with a post)
+    // 2. Stories from elephants the user is following
     elephants.forEach((el) => {
       if (el.id && isFollowing(el.id) && !addedElephantIds.has(el.id)) {
         const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
@@ -196,15 +194,15 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     });
   }, [elephants, posts, isFollowing]);
 
-  // Main Feed Posts (Excludes story-only posts so the feed stays clean)
+  // Main Feed Posts (Excludes story-only posts)
   const feedPosts = useMemo(() => {
     return posts.filter((p) => !p.isStoryOnly);
   }, [posts]);
 
   return (
-    <div className="max-w-lg mx-auto w-full space-y-4 pb-24 animate-fadeIn pt-1">
+    <div className="max-w-lg mx-auto w-full space-y-5 pb-24 animate-fadeIn pt-1">
       {/* ----------------------------------------------------------------- */}
-      {/* STORIES TRAY (User Request: Followed Elephants & Auto Share Stories) */}
+      {/* STORIES TRAY                                                      */}
       {/* ----------------------------------------------------------------- */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
@@ -225,7 +223,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
         </div>
 
         <div className="flex gap-2.5 overflow-x-auto pb-2 pt-0.5 no-scrollbar -mx-1 px-1">
-          {/* 1. Large "+" Story Creator Box */}
+          {/* Large "+" Story Creator Box */}
           <div
             onClick={() => onOpenCreatePost(undefined, true)}
             className="flex-shrink-0 w-24 sm:w-26 cursor-pointer group"
@@ -243,7 +241,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
             </div>
           </div>
 
-          {/* 2. Story Cards (Followed Elephants & Community Stories) */}
+          {/* Story Cards */}
           {compiledStories.map((story, idx) => {
             const hasFollowedBadge = story.isFollowed;
             const isLive = story.linkedElephant?.isLive;
@@ -270,7 +268,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/30" />
 
-                  {/* Top Badges (Live / Following / Tusker) */}
+                  {/* Top Badges */}
                   <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between">
                     {isLive ? (
                       <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-600 text-white shadow-xs">
@@ -314,17 +312,17 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       </div>
 
       {/* ----------------------------------------------------------------- */}
-      {/* COMMUNITY POSTS (Clean: Image, Caption, Profile, Like/Share/Save)  */}
+      {/* USER-SUBMITTED COMMUNITY POSTS                                    */}
       {/* ----------------------------------------------------------------- */}
       {feedPosts && feedPosts.length > 0 && (
-        <div className="space-y-4 pt-1">
+        <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs font-extrabold text-[#062E22] uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{language === 'si' ? 'නවතම ඡායාරූප (Community Posts)' : 'Community Posts'}</span>
+              <span>{language === 'si' ? 'නවතම ප්‍රජා සටහන් (Community Posts)' : 'Community Posts'}</span>
             </h3>
             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-              {feedPosts.length} {feedPosts.length === 1 ? 'Post' : 'Posts'}
+              {feedPosts.length} Posts
             </span>
           </div>
 
@@ -343,7 +341,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 key={postId}
                 className="bg-white rounded-3xl p-3.5 sm:p-4 shadow-xs border border-zinc-200/80 transition-all space-y-2.5"
               >
-                {/* 1. Header: Elephant Profile (Avatar, Name, Org, View Profile button) */}
+                {/* 1. Header: Elephant Profile */}
                 <div className="flex items-center justify-between gap-2">
                   <div
                     onClick={() => linkedElephant && onSelectElephant(linkedElephant)}
@@ -382,7 +380,6 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     </div>
                   </div>
 
-                  {/* View Elephant Profile Button */}
                   {linkedElephant && (
                     <button
                       onClick={() => onSelectElephant(linkedElephant)}
@@ -452,7 +449,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   </button>
                 </div>
 
-                {/* 4. Caption with "See more" / Truncate feature */}
+                {/* 4. Caption with "See more" */}
                 {captionText && (
                   <div className="text-xs text-zinc-800 pt-0.5 leading-relaxed">
                     <span className="font-bold text-[#062E22] mr-1.5">
@@ -476,7 +473,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   </div>
                 )}
 
-                {/* 5. Clean Author Attribution at Bottom */}
+                {/* 5. Author Attribution */}
                 <div className="pt-1.5 border-t border-zinc-100 flex items-center justify-between text-[11px] text-zinc-500">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div className="w-4 h-4 rounded-full overflow-hidden bg-zinc-200 border border-zinc-300 shrink-0">
@@ -503,7 +500,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       )}
 
       {/* ----------------------------------------------------------------- */}
-      {/* MAIN ELEPHANT REGISTRY FEED (Clean & Minimal)                     */}
+      {/* MAIN ELEPHANT REGISTRY FEED                                       */}
       {/* ----------------------------------------------------------------- */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1 pt-1">
@@ -536,7 +533,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               key={elephantId}
               className="bg-white rounded-3xl p-3.5 sm:p-4 shadow-xs border border-zinc-200/80 transition-all space-y-2.5"
             >
-              {/* 1. Header: Avatar, Name, Location Subtitle, Follow button */}
+              {/* 1. Header: Profile Info + Following badge + View Profile */}
               <div className="flex items-center justify-between gap-2">
                 <div
                   onClick={() => onSelectElephant(elephant)}
@@ -575,32 +572,26 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   </div>
                 </div>
 
-                {/* Follow Button */}
-                <button
-                  onClick={() => elephant.id && toggleFollowElephant(elephant.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                    following
-                      ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200'
-                      : 'bg-[#062E22] text-white hover:bg-emerald-900 shadow-2xs'
-                  }`}
-                >
-                  {following ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-700" />
-                      <span>Following</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3 h-3" />
-                      <span>Follow</span>
-                    </>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {following && (
+                    <span className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-900 border border-amber-200">
+                      <Crown className="w-3 h-3 text-amber-600" />
+                      <span>{t.following}</span>
+                    </span>
                   )}
-                </button>
+
+                  <button
+                    onClick={() => onSelectElephant(elephant)}
+                    className="px-3 py-1 rounded-full text-xs font-bold bg-[#062E22] text-white hover:bg-emerald-800 transition-colors cursor-pointer"
+                  >
+                    {t.viewProfile}
+                  </button>
+                </div>
               </div>
 
-              {/* 2. Main Post Image */}
+              {/* 2. Photo View */}
               <div
-                onClick={() => onSelectElephant(elephant)}
+                onClick={() => onSelectPhoto ? onSelectPhoto(postImage) : onSelectElephant(elephant)}
                 className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 cursor-pointer shadow-inner group"
               >
                 <img
@@ -609,22 +600,20 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
                 />
 
-                {/* Clean Floating Badge */}
                 <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
                   <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-md backdrop-blur-md ${
+                    className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-xs ${
                       isTusker
-                        ? 'bg-amber-400/95 text-amber-950 border border-amber-300'
-                        : 'bg-[#062E22]/90 text-white border border-emerald-500/30'
+                        ? 'bg-amber-400/90 text-amber-950'
+                        : 'bg-emerald-800/90 text-white'
                     }`}
                   >
-                    {isTusker ? <Crown className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                    <span>{isTusker ? 'Tusker' : 'Elephant'}</span>
+                    {isTusker ? 'Tusker' : 'Elephant'}
                   </span>
                 </div>
               </div>
 
-              {/* 3. Action Bar: ONLY LIKE, SHARE, SAVE */}
+              {/* 3. Action Buttons: ONLY LIKE, SHARE, SAVE */}
               <div className="flex items-center justify-between pt-1">
                 <div className="flex items-center gap-3 text-zinc-700">
                   {/* LIKE BUTTON */}
@@ -646,7 +635,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
 
                   {/* SHARE BUTTON */}
                   <button
-                    onClick={() => handleShare(elephant.id || elephantId, elephant.name, elephant.description)}
+                    onClick={() => handleShare(elephantId, elephant.name, elephant.description)}
                     className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-100/70 hover:bg-zinc-100 text-zinc-700 hover:text-emerald-800 transition-colors cursor-pointer"
                     title="Share elephant profile"
                   >
@@ -671,16 +660,13 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 </button>
               </div>
 
-              {/* 4. Caption & Description with "See more" */}
-              <div className="space-y-1 text-xs text-zinc-800 pt-0.5">
-                <div className="leading-relaxed">
-                  <span
-                    className="font-bold text-[#062E22] cursor-pointer hover:underline mr-1.5"
-                    onClick={() => onSelectElephant(elephant)}
-                  >
+              {/* 4. Description with "See more" */}
+              {descriptionText && (
+                <div className="text-xs text-zinc-800 pt-0.5 leading-relaxed">
+                  <span className="font-bold text-[#062E22] mr-1.5">
                     {elephant.name}
                   </span>
-                  <span className="text-zinc-700">
+                  <span>
                     {isLongDescription && !isExpanded
                       ? `${descriptionText.slice(0, 120)}... `
                       : descriptionText}
@@ -696,20 +682,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     </button>
                   )}
                 </div>
+              )}
 
-                {/* Bottom View Full Profile Link */}
-                <div className="pt-1.5 flex items-center justify-between border-t border-zinc-100">
-                  <button
-                    onClick={() => onSelectElephant(elephant)}
-                    className="text-xs font-bold text-emerald-800 hover:text-[#062E22] cursor-pointer"
-                  >
-                    {t.viewProfile} →
-                  </button>
+              {/* 5. Mahout & Registry Tag */}
+              <div className="pt-1.5 border-t border-zinc-100 flex items-center justify-between text-[11px] text-zinc-500">
+                <span className="truncate">
+                  {language === 'si' ? 'ඇත්ගොව්වා:' : 'Mahout:'}{' '}
+                  <b className="text-[#062E22] font-semibold">{elephant.mahout || 'National Custodians'}</b>
+                </span>
 
-                  <span className="text-[10px] text-zinc-400">
-                    {elephant.location || 'Sri Lanka'}
-                  </span>
-                </div>
+                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
+                  {elephant.category === 'temple' ? 'Temple Tusker' : 'Domesticated'}
+                </span>
               </div>
             </div>
           );
@@ -717,7 +701,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       </div>
 
       {/* ----------------------------------------------------------------- */}
-      {/* IMMERSIVE STORY VIEWER MODAL                                      */}
+      {/* 5. FULLSCREEN STORY VIEWER MODAL                                  */}
       {/* ----------------------------------------------------------------- */}
       {activeStoryIndex !== null && (
         <StoryViewerModal
@@ -725,10 +709,17 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           initialIndex={activeStoryIndex}
           language={language}
           onClose={() => setActiveStoryIndex(null)}
-          onSelectElephant={onSelectElephant}
-          onShowNotification={notify}
+          onSelectElephant={(el) => {
+            setActiveStoryIndex(null);
+            onSelectElephant(el);
+          }}
+          onShowNotification={showNotificationFallback}
         />
       )}
     </div>
   );
+
+  function showNotificationFallback(msg: string) {
+    if (onShowNotification) onShowNotification(msg);
+  }
 };

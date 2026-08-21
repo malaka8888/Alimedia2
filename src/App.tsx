@@ -344,11 +344,14 @@ export default function App() {
             onShowNotification={showNotification}
           />
         ) : currentTab === 'elephant' ? (
-          /* /Elephant tab: Horizontal circular profiles + directory with View buttons */
+          /* /Elephant tab: Trending spotlight (Top 2 followed + Top 2 liked) + directory */
           <ElephantDirectory
             elephants={elephants}
+            posts={posts}
             language={language}
             onSelectElephant={handleSelectElephant}
+            onSelectPhoto={(photoUrl) => setLightboxPhoto(photoUrl)}
+            onShowNotification={showNotification}
           />
         ) : currentTab === 'profile' ? (
           /* User Profile Screen with Google Sign-in and Followed Elephants */

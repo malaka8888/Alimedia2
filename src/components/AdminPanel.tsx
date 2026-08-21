@@ -35,9 +35,13 @@ import {
   ArrowLeft,
   X,
   FileText,
-  Download
+  Download,
+  FileSpreadsheet,
+  Upload
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Language, translations } from '../utils/translations';
+import { BulkImportElephants } from './BulkImportElephants';
 
 interface AdminPanelProps {
   elephants: Elephant[];
@@ -104,7 +108,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Admin Navigation Tabs
-  const [adminTab, setAdminTab] = useState<'elephants' | 'editor' | 'events' | 'database'>('elephants');
+  const [adminTab, setAdminTab] = useState<'elephants' | 'editor' | 'bulk_import' | 'events' | 'database'>('elephants');
   
   // Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -446,6 +450,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     downloadAnchor.remove();
   };
 
+  // Export Excel (.xlsx)
+  const handleExportExcel = () => {
+    const flattened = elephants.map((el, i) => ({
+      '#': i + 1,
+      'Elephant Name': el.name,
+      'Sinhala Name': el.sinhalaName || '',
+      'Other Names': (el.otherNames || []).join(', '),
+      'Type': el.type,
+      'Gender': el.gender,
+      'Age': el.age || '',
+      'Date of Birth': el.dateOfBirth || '',
+      'Location': el.location,
+      'Organization': el.organization,
+      'Mahout': el.mahout || '',
+      'Tusks Details': el.tusks || '',
+      'Physical Characteristics': el.physicalCharacteristics || '',
+      'Description': el.description,
+      'Perahera Participation': (el.peraheraParticipation || []).join(', '),
+      'Photos': (el.photos || []).join(', '),
+      'Status': el.status || 'living',
+      'Verified': el.verified ? 'TRUE' : 'FALSE',
+      'Featured': el.isFeatured ? 'TRUE' : 'FALSE',
+      'LIVE': el.isLive ? 'TRUE' : 'FALSE',
+      'Custom Badge': el.customBadge || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(flattened);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Elephants');
+    XLSX.writeFile(wb, `alimedia_elephants_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // Export CSV (.csv)
+  const handleExportCSV = () => {
+    const flattened = elephants.map((el, i) => ({
+      '#': i + 1,
+      'Elephant Name': el.name,
+      'Sinhala Name': el.sinhalaName || '',
+      'Other Names': (el.otherNames || []).join(', '),
+      'Type': el.type,
+      'Gender': el.gender,
+      'Age': el.age || '',
+      'Date of Birth': el.dateOfBirth || '',
+      'Location': el.location,
+      'Organization': el.organization,
+      'Mahout': el.mahout || '',
+      'Tusks Details': el.tusks || '',
+      'Physical Characteristics': el.physicalCharacteristics || '',
+      'Description': el.description,
+      'Perahera Participation': (el.peraheraParticipation || []).join(', '),
+      'Photos': (el.photos || []).join(', '),
+      'Status': el.status || 'living',
+      'Verified': el.verified ? 'TRUE' : 'FALSE',
+      'Featured': el.isFeatured ? 'TRUE' : 'FALSE',
+      'LIVE': el.isLive ? 'TRUE' : 'FALSE',
+      'Custom Badge': el.customBadge || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(flattened);
+    const csvOutput = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csvOutput], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `alimedia_elephants_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // -------------------------------------------------------------
   // VIEW: Admin Login Screen
   // -------------------------------------------------------------
@@ -680,6 +755,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <Plus className="w-3.5 h-3.5" />
             <span>{editingId ? 'Edit Elephant (සංස්කරණය)' : '+ New Elephant Profile (නව අලියෙකු එක් කරන්න)'}</span>
+          </button>
+
+          <button
+            onClick={() => setAdminTab('bulk_import')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              adminTab === 'bulk_import'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-amber-500 hover:bg-amber-600 text-zinc-950 shadow-xs'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Bulk Import (Excel / CSV තොග ඇතුළත් කිරීම)</span>
           </button>
 
           <button
@@ -1569,6 +1656,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
 
         {/* ------------------------------------------------------------- */}
+        {/* TAB: Bulk Import Elephants via Excel / CSV                    */}
+        {/* ------------------------------------------------------------- */}
+        {adminTab === 'bulk_import' && (
+          <BulkImportElephants
+            existingElephants={elephants}
+            onSaveElephant={onSaveElephant}
+            language={language}
+            onFinished={() => {
+              setAdminTab('elephants');
+              showToast('තොග දත්ත ඇතුළත් කිරීම සාර්ථකව අවසන් විය!');
+            }}
+          />
+        )}
+
+        {/* ------------------------------------------------------------- */}
         {/* TAB 4: Database & System Tools */}
         {/* ------------------------------------------------------------- */}
         {adminTab === 'database' && (
@@ -1610,7 +1712,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
             </div>
 
-            {/* Export JSON backup */}
+            {/* Export Backups (Excel, CSV, JSON) */}
             <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
@@ -1618,23 +1720,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm text-[#062E22]">
-                    Export Database Backup (JSON)
+                    Export Registry Data & Backups
                   </h3>
-                  <p className="text-xs text-zinc-500">Download snapshot of all elephant profiles</p>
+                  <p className="text-xs text-zinc-500">Download snapshot of all elephant profiles ({elephants.length} Records)</p>
                 </div>
               </div>
 
               <p className="text-xs text-zinc-600 leading-relaxed">
-                වෙබ් අඩවියේ ඇති සියලුම හීලෑ අලි වාර්තා JSON ගොනුවක් ලෙස ඔබගේ පරිගණකයට බාගත කර සුරක්ෂිතව තබා ගන්න.
+                වෙබ් අඩවියේ ඇති සියලුම හීලෑ අලි වාර්තා Excel, CSV හෝ JSON ගොනුවක් ලෙස ඔබගේ පරිගණකයට බාගත කර සුරක්ෂිතව තබා ගන්න.
               </p>
 
-              <button
-                onClick={handleExportJSON}
-                className="w-full py-3 bg-[#062E22] hover:bg-emerald-900 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export JSON Backup ({elephants.length} Records)</span>
-              </button>
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={handleExportExcel}
+                  className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                  <span>Export to Excel Spreadsheet (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-amber-300" />
+                  <span>Export to CSV File (.csv)</span>
+                </button>
+
+                <button
+                  onClick={handleExportJSON}
+                  className="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-zinc-500" />
+                  <span>Export JSON Backup (.json)</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
