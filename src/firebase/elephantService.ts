@@ -1,0 +1,315 @@
+import {
+  collection,
+  getDocs,
+  getDoc,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  query,
+  orderBy
+} from 'firebase/firestore';
+import { db } from './config';
+import { Elephant, CulturalEvent } from '../types/elephant';
+import { INITIAL_VERIFIED_ELEPHANTS } from '../data/initialVerifiedData';
+
+const ELEPHANTS_COLLECTION = 'elephants';
+const EVENTS_COLLECTION = 'cultural_events';
+
+/**
+ * Initial default cultural events / perahera updates
+ */
+export const INITIAL_EVENTS: CulturalEvent[] = [
+  {
+    title: "Kandy Esala Perahera 2024 (මහනුවර ඇසළ මහා පෙරහැර)",
+    sinhalaTitle: "මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය",
+    description: "The Grand Pageant of Sri Lanka carrying the sacred tooth relic casket. Chief ceremonial tuskers leading the Maligawa procession.",
+    location: "Kandy (මහනුවර)",
+    date: "August 10 - 20, 2024",
+    type: "perahera",
+    participatingElephants: ["Indiraja", "Myan Kumara", "Vasana"],
+    isActive: true
+  },
+  {
+    title: "Kelaniya Duruthu Maha Perahera (කැලණිය දුරුතු පෙරහැර)",
+    sinhalaTitle: "කැලණිය රජ මහා විහාර දුරුතු මහා පෙරහැර",
+    description: "Historic annual religious pageant celebrating the Buddha's visit to Kelaniya Raja Maha Vihara.",
+    location: "Kelaniya, Colombo",
+    date: "January 2025",
+    type: "perahera",
+    participatingElephants: ["Kandula"],
+    isActive: true
+  },
+  {
+    title: "Bellanwila Esala Perahera (බෙල්ලන්විල ඇසළ පෙරහැර)",
+    sinhalaTitle: "බෙල්ලන්විල රජ මහා විහාර ඇසළ පෙරහැර",
+    description: "Traditional Colombo cultural festival with leading domesticated tuskers and elephants.",
+    location: "Bellanwila, Colombo",
+    date: "September 2024",
+    type: "perahera",
+    participatingElephants: ["Abhaya"],
+    isActive: true
+  }
+];
+
+/**
+ * Fetch all elephants from Cloud Firestore.
+ */
+export async function getElephants(): Promise<Elephant[]> {
+  try {
+    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+    const q = query(elephantsCol);
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return [];
+    }
+
+    const list: Elephant[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      list.push({
+        id: docSnap.id,
+        name: data.name || 'Unnamed Elephant',
+        sinhalaName: data.sinhalaName || '',
+        otherNames: Array.isArray(data.otherNames) ? data.otherNames : [],
+        gender: data.gender || 'male',
+        type: data.type || 'elephant',
+        dateOfBirth: data.dateOfBirth || '',
+        age: data.age !== undefined && data.age !== null ? data.age : '',
+        location: data.location || '',
+        organization: data.organization || '',
+        mahout: data.mahout || '',
+        tusks: data.tusks || '',
+        physicalCharacteristics: data.physicalCharacteristics || '',
+        description: data.description || '',
+        peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
+        photos: Array.isArray(data.photos) ? data.photos : [],
+        sources: Array.isArray(data.sources) ? data.sources : [],
+        verified: data.verified !== undefined ? Boolean(data.verified) : true,
+        status: data.status || 'living',
+        isFeatured: Boolean(data.isFeatured),
+        isLive: Boolean(data.isLive),
+        customBadge: data.customBadge || '',
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+      });
+    });
+
+    return list;
+  } catch (error) {
+    console.error('Error fetching elephants from Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get single elephant profile by document ID
+ */
+export async function getElephantById(id: string): Promise<Elephant | null> {
+  try {
+    const docRef = doc(db, ELEPHANTS_COLLECTION, id);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return null;
+    }
+
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      name: data.name || '',
+      sinhalaName: data.sinhalaName || '',
+      otherNames: Array.isArray(data.otherNames) ? data.otherNames : [],
+      gender: data.gender || 'male',
+      type: data.type || 'elephant',
+      dateOfBirth: data.dateOfBirth || '',
+      age: data.age !== undefined && data.age !== null ? data.age : '',
+      location: data.location || '',
+      organization: data.organization || '',
+      mahout: data.mahout || '',
+      tusks: data.tusks || '',
+      physicalCharacteristics: data.physicalCharacteristics || '',
+      description: data.description || '',
+      peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
+      photos: Array.isArray(data.photos) ? data.photos : [],
+      sources: Array.isArray(data.sources) ? data.sources : [],
+      verified: data.verified !== undefined ? Boolean(data.verified) : true,
+      status: data.status || 'living',
+      isFeatured: Boolean(data.isFeatured),
+      isLive: Boolean(data.isLive),
+      customBadge: data.customBadge || '',
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+    };
+  } catch (error) {
+    console.error(`Error fetching elephant with id ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Add a new elephant record into Firestore
+ */
+export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  try {
+    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+    const docRef = await addDoc(elephantsCol, {
+      ...elephantData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding elephant to Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update an existing elephant document in Firestore
+ */
+export async function updateElephant(id: string, elephantData: Partial<Elephant>): Promise<void> {
+  try {
+    const docRef = doc(db, ELEPHANTS_COLLECTION, id);
+    const { id: _, ...rest } = elephantData;
+    await updateDoc(docRef, {
+      ...rest,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error(`Error updating elephant ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Quick toggle verification status
+ */
+export async function toggleElephantVerification(id: string, verified: boolean): Promise<void> {
+  await updateElephant(id, { verified });
+}
+
+/**
+ * Quick toggle featured status
+ */
+export async function toggleElephantFeatured(id: string, isFeatured: boolean): Promise<void> {
+  await updateElephant(id, { isFeatured });
+}
+
+/**
+ * Quick toggle live status
+ */
+export async function toggleElephantLive(id: string, isLive: boolean): Promise<void> {
+  await updateElephant(id, { isLive });
+}
+
+/**
+ * Delete an elephant document from Firestore
+ */
+export async function deleteElephant(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, ELEPHANTS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error(`Error deleting elephant ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Seed initial verified Sri Lankan domesticated elephants into Firestore
+ */
+export async function seedInitialVerifiedData(): Promise<number> {
+  try {
+    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+    let count = 0;
+    
+    for (const elephant of INITIAL_VERIFIED_ELEPHANTS) {
+      await addDoc(elephantsCol, {
+        ...elephant,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      count++;
+    }
+
+    // Also seed default cultural events if empty
+    const eventsCol = collection(db, EVENTS_COLLECTION);
+    const eventSnap = await getDocs(eventsCol);
+    if (eventSnap.empty) {
+      for (const ev of INITIAL_EVENTS) {
+        await addDoc(eventsCol, {
+          ...ev,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+
+    return count;
+  } catch (error) {
+    console.error('Error seeding verified elephant records:', error);
+    throw error;
+  }
+}
+
+// -------------------------------------------------------------
+// Cultural Events Service
+// -------------------------------------------------------------
+
+export async function getCulturalEvents(): Promise<CulturalEvent[]> {
+  try {
+    const eventsCol = collection(db, EVENTS_COLLECTION);
+    const snapshot = await getDocs(eventsCol);
+    if (snapshot.empty) {
+      return INITIAL_EVENTS;
+    }
+    const events: CulturalEvent[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      events.push({
+        id: docSnap.id,
+        title: data.title || '',
+        sinhalaTitle: data.sinhalaTitle || '',
+        description: data.description || '',
+        location: data.location || '',
+        date: data.date || '',
+        type: data.type || 'perahera',
+        participatingElephants: Array.isArray(data.participatingElephants) ? data.participatingElephants : [],
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+      });
+    });
+    return events;
+  } catch (error) {
+    console.warn('Error fetching events, returning defaults:', error);
+    return INITIAL_EVENTS;
+  }
+}
+
+export async function addCulturalEvent(eventData: Omit<CulturalEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  const eventsCol = collection(db, EVENTS_COLLECTION);
+  const docRef = await addDoc(eventsCol, {
+    ...eventData,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+export async function updateCulturalEvent(id: string, eventData: Partial<CulturalEvent>): Promise<void> {
+  const docRef = doc(db, EVENTS_COLLECTION, id);
+  const { id: _, ...rest } = eventData;
+  await updateDoc(docRef, {
+    ...rest,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteCulturalEvent(id: string): Promise<void> {
+  const docRef = doc(db, EVENTS_COLLECTION, id);
+  await deleteDoc(docRef);
+}

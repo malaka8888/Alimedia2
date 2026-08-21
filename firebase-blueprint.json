@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "Elephant": {
+      "title": "Elephant",
+      "description": "A domesticated elephant or tusker registered in Sri Lanka",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Primary name of the elephant"
+        },
+        "sinhalaName": {
+          "type": "string",
+          "description": "Sinhala script name"
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["male", "female"]
+        },
+        "type": {
+          "type": "string",
+          "enum": ["tusker", "elephant"]
+        },
+        "location": {
+          "type": "string"
+        },
+        "organization": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "followerCount": {
+          "type": "number"
+        }
+      },
+      "required": ["name", "type", "gender"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public profile and followings for an authenticated user",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "photoURL": {
+          "type": "string"
+        },
+        "followedElephants": {
+          "type": "array"
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "CulturalEvent": {
+      "title": "CulturalEvent",
+      "description": "Perahera and cultural festival schedules",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        }
+      },
+      "required": ["title", "location", "date"]
+    }
+  },
+  "firestore": {
+    "/elephants/{elephantId}": {
+      "schema": {
+        "$ref": "#/entities/Elephant"
+      },
+      "description": "Public registry of domesticated elephants"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User profiles and followed elephants list"
+    },
+    "/cultural_events/{eventId}": {
+      "schema": {
+        "$ref": "#/entities/CulturalEvent"
+      },
+      "description": "Perahera calendar and cultural events notices"
+    }
+  }
+}

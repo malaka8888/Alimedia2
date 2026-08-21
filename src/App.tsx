@@ -1,0 +1,436 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Elephant, CulturalEvent } from './types/elephant';
+import {
+  getElephants,
+  addElephant,
+  updateElephant,
+  deleteElephant,
+  toggleElephantVerification,
+  toggleElephantFeatured,
+  toggleElephantLive,
+  seedInitialVerifiedData,
+  getCulturalEvents,
+  addCulturalEvent,
+  updateCulturalEvent,
+  deleteCulturalEvent
+} from './firebase/elephantService';
+import { Navbar } from './components/Navbar';
+import { BottomNav } from './components/BottomNav';
+import { DiscoverFeed } from './components/DiscoverFeed';
+import { ElephantDirectory } from './components/ElephantDirectory';
+import { ElephantProfileScreen } from './components/ElephantProfileScreen';
+import { UserProfileScreen } from './components/UserProfileScreen';
+import { AdminPanel } from './components/AdminPanel';
+import { PhotoLightbox } from './components/PhotoLightbox';
+import { Language, translations } from './utils/translations';
+import { CheckCircle2, Calendar, MapPin, Crown } from 'lucide-react';
+
+export default function App() {
+  const [elephants, setElephants] = useState<Elephant[]>([]);
+  const [events, setEvents] = useState<CulturalEvent[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Tabs: 'home' | 'elephant' | 'notifications' | 'profile' | 'admin'
+  const [currentTab, setCurrentTab] = useState<'home' | 'elephant' | 'notifications' | 'profile' | 'admin'>('home');
+  const [selectedElephant, setSelectedElephant] = useState<Elephant | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+  const [isSeeding, setIsSeeding] = useState<boolean>(false);
+  const [language, setLanguage] = useState<Language>('si');
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Load elephants and cultural events from Cloud Firestore
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [elephantData, eventData] = await Promise.all([
+        getElephants(),
+        getCulturalEvents()
+      ]);
+
+      // If Firestore is empty on initial run, automatically seed verified records
+      if (elephantData.length === 0) {
+        try {
+          setIsSeeding(true);
+          await seedInitialVerifiedData();
+          const refreshedElephants = await getElephants();
+          const refreshedEvents = await getCulturalEvents();
+          setElephants(refreshedElephants);
+          setEvents(refreshedEvents);
+          showNotification(language === 'si' ? 'හීලෑ අලි වාර්තා සාර්ථකව සම්බන්ධ කෙරිණි!' : 'Verified records loaded!');
+        } catch (seedErr: any) {
+          console.warn('Auto-seed fallback:', seedErr);
+          setElephants([]);
+          setEvents(eventData);
+        } finally {
+          setIsSeeding(false);
+        }
+      } else {
+        setElephants(elephantData);
+        setEvents(eventData);
+      }
+    } catch (err: any) {
+      console.error('Failed to load from Firestore:', err);
+      setError(err.message || 'Failed to connect to database');
+    } finally {
+      setLoading(false);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Handle URL hash changes or routing
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (hash === 'elephant' || hash === 'elephants') {
+        setCurrentTab('elephant');
+        setSelectedElephant(null);
+        setIsAdminOpen(false);
+      } else if (hash === 'home') {
+        setCurrentTab('home');
+        setSelectedElephant(null);
+        setIsAdminOpen(false);
+      } else if (hash === 'profile') {
+        setCurrentTab('profile');
+        setSelectedElephant(null);
+        setIsAdminOpen(false);
+      } else if (hash === 'admin') {
+        setIsAdminOpen(true);
+      } else if (hash === 'notifications') {
+        setCurrentTab('notifications');
+        setSelectedElephant(null);
+        setIsAdminOpen(false);
+      } else if (hash && elephants.length > 0) {
+        const found = elephants.find((e) => e.id === hash || e.name.toLowerCase() === hash.toLowerCase());
+        if (found) {
+          setSelectedElephant(found);
+          setIsAdminOpen(false);
+        }
+      }
+    };
+
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [elephants]);
+
+  const handleSelectElephant = (elephant: Elephant) => {
+    setSelectedElephant(elephant);
+    setIsAdminOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (elephant.id) {
+      window.location.hash = elephant.id;
+    }
+  };
+
+  const handleBackToDirectory = () => {
+    setSelectedElephant(null);
+    if (window.location.hash) {
+      history.pushState('', document.title, window.location.pathname + window.location.search);
+    }
+  };
+
+  const handleTabChange = (tab: 'home' | 'elephant' | 'notifications' | 'profile' | 'admin') => {
+    setSelectedElephant(null);
+    if (tab === 'admin') {
+      setIsAdminOpen(true);
+      window.location.hash = 'admin';
+      return;
+    }
+
+    setCurrentTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (tab === 'elephant') {
+      setIsAdminOpen(false);
+      window.location.hash = 'elephant';
+    } else if (tab === 'home') {
+      setIsAdminOpen(false);
+      window.location.hash = 'home';
+    } else if (tab === 'profile') {
+      setIsAdminOpen(false);
+      window.location.hash = 'profile';
+    } else if (tab === 'notifications') {
+      setIsAdminOpen(false);
+      window.location.hash = 'notifications';
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Elephant CRUD Handlers
+  // -------------------------------------------------------------
+
+  const handleSaveElephant = async (
+    elephantData: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>,
+    id?: string
+  ) => {
+    if (id) {
+      await updateElephant(id, elephantData);
+      showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
+    } else {
+      await addElephant(elephantData);
+      showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
+    }
+    const fresh = await getElephants();
+    setElephants(fresh);
+  };
+
+  const handleDeleteElephant = async (id: string) => {
+    await deleteElephant(id);
+    showNotification('වාර්තාව සාර්ථකව ඉවත් කෙරිණි.');
+    if (selectedElephant?.id === id) {
+      setSelectedElephant(null);
+    }
+    const fresh = await getElephants();
+    setElephants(fresh);
+  };
+
+  const handleToggleVerification = async (id: string, verified: boolean) => {
+    await toggleElephantVerification(id, verified);
+    const fresh = await getElephants();
+    setElephants(fresh);
+    if (selectedElephant && selectedElephant.id === id) {
+      setSelectedElephant({ ...selectedElephant, verified });
+    }
+  };
+
+  const handleToggleFeatured = async (id: string, isFeatured: boolean) => {
+    await toggleElephantFeatured(id, isFeatured);
+    const fresh = await getElephants();
+    setElephants(fresh);
+    if (selectedElephant && selectedElephant.id === id) {
+      setSelectedElephant({ ...selectedElephant, isFeatured });
+    }
+  };
+
+  const handleToggleLive = async (id: string, isLive: boolean) => {
+    await toggleElephantLive(id, isLive);
+    const fresh = await getElephants();
+    setElephants(fresh);
+    if (selectedElephant && selectedElephant.id === id) {
+      setSelectedElephant({ ...selectedElephant, isLive });
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Cultural Events CRUD Handlers
+  // -------------------------------------------------------------
+
+  const handleSaveEvent = async (
+    eventData: Omit<CulturalEvent, 'id' | 'createdAt' | 'updatedAt'>,
+    id?: string
+  ) => {
+    if (id) {
+      await updateCulturalEvent(id, eventData);
+      showNotification('පෙරහැර නිවේදනය යාවත්කාලීන විය!');
+    } else {
+      await addCulturalEvent(eventData);
+      showNotification('නව පෙරහැර නිවේදනයක් පළ කෙරිණි!');
+    }
+    const freshEvents = await getCulturalEvents();
+    setEvents(freshEvents);
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    await deleteCulturalEvent(id);
+    showNotification('නිවේදනය ඉවත් කරන ලදී.');
+    const freshEvents = await getCulturalEvents();
+    setEvents(freshEvents);
+  };
+
+  // Seed database manually
+  const handleSeedDatabase = async () => {
+    setIsSeeding(true);
+    try {
+      await seedInitialVerifiedData();
+      await loadData();
+      showNotification('සත්‍යාපිත හීලෑ අලි වාර්තා සාර්ථකව ඇතුළත් කෙරිණි!');
+    } catch (err: any) {
+      alert(`Error: ${err.message || err}`);
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F7F8F4] text-[#062E22] flex flex-col font-sans antialiased selection:bg-emerald-200">
+      {/* Toast Notification */}
+      {notification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{notification}</span>
+        </div>
+      )}
+
+      {/* Top Navbar */}
+      <Navbar
+        currentTab={currentTab}
+        onSelectTab={handleTabChange}
+        language={language}
+        onToggleLanguage={() => setLanguage((prev) => (prev === 'si' ? 'en' : 'si'))}
+        onOpenAdmin={() => {
+          setIsAdminOpen(true);
+          window.location.hash = 'admin';
+        }}
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-lg mx-auto px-3.5 sm:px-4 pt-3">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 space-y-3">
+            <div className="w-10 h-10 border-3 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-bold text-emerald-900/80">
+              {language === 'si' ? 'හීලෑ අලි වාර්තා පූරණය වෙමින් පවතී...' : 'Loading verified elephant registry...'}
+            </p>
+          </div>
+        ) : selectedElephant ? (
+          /* SCREEN 3: Profile view when clicking "View" / elephant */
+          <ElephantProfileScreen
+            elephant={selectedElephant}
+            language={language}
+            onBack={handleBackToDirectory}
+            onSelectPhoto={(photoUrl) => setLightboxPhoto(photoUrl)}
+          />
+        ) : currentTab === 'home' ? (
+          /* SCREEN 1: /home Discover tab matching Instagram-style discover */
+          <DiscoverFeed
+            elephants={elephants}
+            language={language}
+            onSelectElephant={handleSelectElephant}
+            onOpenAdmin={() => {
+              setIsAdminOpen(true);
+              window.location.hash = 'admin';
+            }}
+          />
+        ) : currentTab === 'elephant' ? (
+          /* /Elephant tab: Horizontal circular profiles + directory with View buttons */
+          <ElephantDirectory
+            elephants={elephants}
+            language={language}
+            onSelectElephant={handleSelectElephant}
+          />
+        ) : currentTab === 'profile' ? (
+          /* User Profile Screen with Google Sign-in and Followed Elephants */
+          <UserProfileScreen
+            elephants={elephants}
+            language={language}
+            onSelectElephant={handleSelectElephant}
+            onOpenDirectory={() => handleTabChange('elephant')}
+          />
+        ) : currentTab === 'notifications' ? (
+          /* Notifications Tab: Real Cultural Calendar & Perahera Updates */
+          <div className="space-y-4 py-3 pb-24 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold text-[#062E22]">
+                  {language === 'si' ? 'පෙරහැර සහ සංස්කෘතික නිවේදන' : 'Perahera & Cultural Notices'}
+                </h2>
+                <p className="text-xs text-zinc-500">
+                  {language === 'si' ? 'හීලෑ අලි සහභාගී වන පෙරහැර කාලසටහන' : 'Festivals featuring Sri Lankan tuskers'}
+                </p>
+              </div>
+              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+            </div>
+
+            <div className="space-y-3">
+              {events.map((ev) => (
+                <div
+                  key={ev.id || ev.title}
+                  className="bg-white p-4 sm:p-5 rounded-3xl border border-zinc-200 shadow-2xs space-y-2.5 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-extrabold text-[#062E22]">{ev.title}</h4>
+                      {ev.sinhalaTitle && (
+                        <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                      )}
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                      Perahera
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-zinc-600 leading-relaxed">{ev.description}</p>
+
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 pt-2 border-t border-zinc-100 font-medium">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>{ev.location}</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>{ev.date}</span>
+                    </span>
+                  </div>
+
+                  {ev.participatingElephants && ev.participatingElephants.length > 0 && (
+                    <div className="bg-[#FAF9F5] p-2.5 rounded-xl border border-zinc-200/80 flex items-center gap-1.5 text-xs text-[#062E22]">
+                      <Crown className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span className="font-bold">සහභාගී වන ඇත්තු:</span>
+                      <span className="text-zinc-600 truncate">{ev.participatingElephants.join(', ')}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </main>
+
+      {/* Floating Bottom Navigation Bar */}
+      <BottomNav
+        currentTab={currentTab === 'admin' ? 'profile' : currentTab}
+        onSelectTab={handleTabChange}
+        onOpenAdd={() => {
+          setIsAdminOpen(true);
+          window.location.hash = 'admin';
+        }}
+      />
+
+      {/* Photo Lightbox */}
+      {lightboxPhoto && (
+        <PhotoLightbox
+          photoUrl={lightboxPhoto}
+          onClose={() => setLightboxPhoto(null)}
+        />
+      )}
+
+      {/* Full Admin Control Console & Authentication Modal */}
+      {isAdminOpen && (
+        <AdminPanel
+          elephants={elephants}
+          events={events}
+          onSaveElephant={handleSaveElephant}
+          onDeleteElephant={handleDeleteElephant}
+          onToggleVerification={handleToggleVerification}
+          onToggleFeatured={handleToggleFeatured}
+          onToggleLive={handleToggleLive}
+          onSaveEvent={handleSaveEvent}
+          onDeleteEvent={handleDeleteEvent}
+          onSeedDatabase={handleSeedDatabase}
+          onViewElephant={(el) => {
+            setIsAdminOpen(false);
+            handleSelectElephant(el);
+          }}
+          onClose={() => {
+            setIsAdminOpen(false);
+            if (window.location.hash === '#admin') {
+              window.location.hash = currentTab === 'elephant' ? 'elephant' : currentTab === 'profile' ? 'profile' : 'home';
+            }
+          }}
+          language={language}
+        />
+      )}
+    </div>
+  );
+}

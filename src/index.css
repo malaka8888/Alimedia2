@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-offwhite-bg: #F8F9F5;
+    --color-offwhite-card: #FFFFFF;
+    --color-darkgreen: #062E22;
+    --color-darkgreen-light: #0B3B2C;
+    --color-emerald-accent: #10B981;
+  }
+
+  body {
+    background-color: #F7F8F4;
+    color: #062E22;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+.font-sinhala {
+  font-family: 'Noto Sans Sinhala', 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F3ED;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C4CEC3;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8A9E88;
+}
