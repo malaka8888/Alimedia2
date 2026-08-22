@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Elephant, CulturalEvent, ElephantPost } from './types/elephant';
 import { INITIAL_VERIFIED_ELEPHANTS } from './data/initialVerifiedData';
+import { INITIAL_POSTS } from './data/initialPosts';
 import {
   getElephants,
   addElephant,
@@ -58,10 +59,10 @@ export default function App() {
       const cached = localStorage.getItem('alimedia_cached_posts');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [];
+    return INITIAL_POSTS;
   });
 
   const [loading, setLoading] = useState<boolean>(false);

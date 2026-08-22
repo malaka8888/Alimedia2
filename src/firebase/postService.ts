@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { ElephantPost } from '../types/elephant';
+import { INITIAL_POSTS } from '../data/initialPosts';
 
 const POSTS_COLLECTION = 'elephant_posts';
 const ELEPHANTS_COLLECTION = 'elephants';
@@ -122,21 +123,21 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
 
-    return [];
+    return INITIAL_POSTS;
   } catch (error) {
     console.warn('Error fetching all elephant posts:', error);
     try {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return [];
+    return INITIAL_POSTS;
   }
 }
 
