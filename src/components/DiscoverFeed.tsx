@@ -460,49 +460,48 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 <div
                   key={group.elephantId || groupIdx}
                   onClick={() => setActiveStoryGroupIndex(groupIdx)}
-                  className="flex-shrink-0 w-26 sm:w-28 cursor-pointer group"
+                  className="flex-shrink-0 w-24 sm:w-26 cursor-pointer group"
                 >
                   <div
-                    className={`relative aspect-[3/4] rounded-2xl overflow-hidden shadow-xs bg-zinc-900 border-2 transition-all transform group-hover:scale-[1.02] ${
+                    className={`relative aspect-[3/4] rounded-2xl overflow-hidden shadow-xs bg-zinc-950 border-2 transition-all transform group-hover:scale-[1.03] ${
                       isViewed
-                        ? 'border-zinc-500/40 dark:border-zinc-700/50 opacity-80 group-hover:opacity-100'
-                        : 'border-amber-400 ring-2 ring-amber-400/50 shadow-md'
+                        ? 'border-white/20 opacity-75 group-hover:opacity-100'
+                        : 'border-amber-400 ring-2 ring-amber-400/40 shadow-md'
                     }`}
                   >
                     <img
                       src={coverImg}
                       alt={group.elephantName}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/30" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/30 pointer-events-none" />
 
                     {/* Top Badges */}
-                    <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between">
+                    <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
                       {isLive ? (
                         <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-600 text-white shadow-xs">
                           <Radio className="w-2 h-2" />
-                          <span>LIVE</span>
                         </span>
                       ) : !isViewed ? (
-                        <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-400 text-zinc-950 shadow-xs animate-pulse">
-                          <span>{t.newStory} • 6s</span>
-                        </span>
+                        <span className="w-2 h-2 rounded-full bg-amber-400 ring-2 ring-amber-400/50 animate-pulse" />
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold text-zinc-300 bg-black/60 backdrop-blur-xs px-1.5 py-0.5 rounded-md border border-white/10">
-                          <Check className="w-2.5 h-2.5 text-emerald-400 stroke-[3]" />
-                          <span>{t.viewed}</span>
+                        <span className="p-0.5 rounded-full bg-black/50 backdrop-blur-xs border border-white/10">
+                          <Check className="w-2 h-2 text-emerald-400 stroke-[3]" />
                         </span>
                       )}
 
-                      {/* Segments Count Badge */}
-                      <div className="px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs flex items-center gap-0.5 text-[9px] font-black text-amber-300 border border-amber-400/40 shadow-xs">
-                        <Play className="w-2 h-2 fill-amber-300 stroke-none" />
-                        <span>{segmentCount}</span>
-                      </div>
+                      {/* Segments count */}
+                      {segmentCount > 1 && (
+                        <div className="px-1.5 py-0.2 rounded-full bg-black/60 backdrop-blur-xs flex items-center gap-0.5 text-[8px] font-bold text-white/90 border border-white/20 shadow-xs">
+                          <Play className="w-1.5 h-1.5 fill-white stroke-none" />
+                          <span>{segmentCount}</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Bottom Avatar & Elephant Bilingual Name */}
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 text-white">
+                    {/* Bottom Avatar & Elephant Name */}
+                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-1.5 text-white pointer-events-none">
                       <div className={`w-5 h-5 rounded-full overflow-hidden border-2 flex-shrink-0 bg-emerald-950 shadow-xs ${
                         isViewed ? 'border-zinc-400' : 'border-amber-400'
                       }`}>
@@ -513,7 +512,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                         />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[10px] font-extrabold truncate block drop-shadow" title={bilingualName}>
+                        <span className="text-[10px] font-bold truncate block drop-shadow text-white group-hover:text-amber-300 transition-colors" title={bilingualName}>
                           {bilingualName}
                         </span>
                       </div>

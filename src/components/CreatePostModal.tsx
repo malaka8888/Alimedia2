@@ -19,6 +19,7 @@ import {
 import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 import { addElephantPost } from '../firebase/postService';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface CreatePostModalProps {
   elephants: Elephant[];
@@ -71,61 +72,37 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
   }, [isStoryOnlyInitial]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 20 * 1024 * 1024) {
-      setErrorMsg(language === 'si' ? 'ඡායාරූපය 20MB ට වඩා අඩු විය යුතුය.' : 'Photo must be under 20MB.');
+    if (file.size > 25 * 1024 * 1024) {
+      setErrorMsg(language === 'si' ? 'ඡායාරූපය 25MB ට වඩා අඩු විය යුතුය.' : 'Photo must be under 25MB.');
       return;
     }
 
     setErrorMsg(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawData = event.target?.result as string;
-      if (!rawData) return;
+    try {
+      // Instant ultra-lean compression (< 80KB) with high quality
+      const compressedData = await compressImageFile(file, {
+        maxDimension: 860,
+        quality: 0.72,
+        mimeType: 'image/jpeg',
+      });
 
-      // Set raw preview immediately so user sees it instantly
-      setPhotoPreview(rawData);
-
-      // Compress client-side in background for ultra-fast Firestore upload (< 100KB)
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const MAX_DIM = 960;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_DIM) {
-              height = Math.round((height * MAX_DIM) / width);
-              width = MAX_DIM;
-            }
-          } else {
-            if (height > MAX_DIM) {
-              width = Math.round((width * MAX_DIM) / height);
-              height = MAX_DIM;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL('image/jpeg', 0.78);
-            setPhotoPreview(compressed);
-          }
-        } catch {
-          // Keep raw data if canvas fails
-        }
+      if (compressedData) {
+        setPhotoPreview(compressedData);
+      }
+    } catch {
+      // Fallback to FileReader
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const rawData = event.target?.result as string;
+        if (rawData) setPhotoPreview(rawData);
       };
-      img.src = rawData;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleApplyUrl = () => {
