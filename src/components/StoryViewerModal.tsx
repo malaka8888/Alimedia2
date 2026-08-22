@@ -466,8 +466,8 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               className="flex items-center gap-2.5 cursor-pointer group min-w-0"
             >
               {/* Instagram Glowing Avatar Ring */}
-              <div className="w-9 h-9 rounded-full p-[1.5px] bg-gradient-to-tr from-amber-400 via-rose-500 to-emerald-400 shrink-0 shadow-md">
-                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-950">
+              <div className="w-9 h-9 rounded-full p-[1.5px] bg-[#062E22] ring-2 ring-emerald-500/80 shrink-0 shadow-md">
+                <div className="w-full h-full rounded-full overflow-hidden bg-black">
                   <img
                     src={currentGroup.avatarPhoto || imageSrc}
                     alt={currentGroup.elephantName}
@@ -477,12 +477,12 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               </div>
 
               <div className="min-w-0 flex items-center gap-1.5">
-                <span className="font-bold text-sm text-white drop-shadow truncate group-hover:text-amber-300 transition-colors">
+                <span className="font-bold text-sm text-white drop-shadow truncate group-hover:text-emerald-300 transition-colors">
                   {bilingualElephantName}
                 </span>
 
                 {currentGroup.isTusker && (
-                  <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                  <Crown className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
                 )}
 
                 <span className="text-white/60 text-xs font-light">•</span>
@@ -501,17 +501,17 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                     e.stopPropagation();
                     toggleFollowElephant(elephantId);
                   }}
-                  className={`p-1.5 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  className={`p-2 rounded-full transition-all cursor-pointer active:scale-90 ${
                     followingThisElephant
-                      ? 'bg-amber-400 text-black shadow-md'
-                      : 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-md border border-white/20'
+                      ? 'bg-white text-black shadow-md'
+                      : 'bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20'
                   }`}
                   title={followingThisElephant ? 'Following' : 'Follow'}
                 >
                   {followingThisElephant ? (
-                    <UserCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <UserCheck className="w-4 h-4 stroke-[2.5]" />
                   ) : (
-                    <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <UserPlus className="w-4 h-4 stroke-[2.5]" />
                   )}
                 </button>
               )}
@@ -522,7 +522,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   e.stopPropagation();
                   onClose();
                 }}
-                className="p-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md transition-colors cursor-pointer border border-white/15 active:scale-90"
+                className="p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-colors cursor-pointer border border-white/20 active:scale-90"
                 title="Close"
               >
                 <X className="w-4 h-4 stroke-[2.5]" />
@@ -539,8 +539,8 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             title="Prev"
           >
             {(currentSegmentIdx > 0 || currentGroupIdx > 0) && (
-              <div className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                <ChevronLeft className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                <ChevronLeft className="w-5 h-5" />
               </div>
             )}
           </div>
@@ -550,25 +550,25 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             className="w-2/3 h-full cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-end pr-3 transition-opacity text-white/70"
             title="Next"
           >
-            <div className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20">
-              <ChevronRight className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20">
+              <ChevronRight className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* BOTTOM CLEAN INSTAGRAM OVERLAY */}
-        <div className="relative z-20 p-3.5 space-y-2 pointer-events-auto">
+        <div className="relative z-20 p-4 space-y-2.5 pointer-events-auto">
           {/* Author Tag & Profile Shortcut */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shadow-xs">
-              <div className="w-3.5 h-3.5 rounded-full overflow-hidden bg-emerald-800 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15 shadow-xs">
+              <div className="w-4 h-4 rounded-full overflow-hidden bg-[#062E22] flex items-center justify-center shrink-0 border border-emerald-500/50">
                 {currentStory.authorPhotoURL ? (
                   <img src={currentStory.authorPhotoURL} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <User className="w-2 h-2 text-amber-300" />
+                  <User className="w-2.5 h-2.5 text-white" />
                 )}
               </div>
-              <span className="text-amber-300 font-mono text-[11px] font-semibold">
+              <span className="text-white font-mono text-[11px] font-semibold">
                 {cleanUsername}
               </span>
             </div>
@@ -580,10 +580,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   onClose();
                   onSelectElephant(currentGroup.linkedElephant!);
                 }}
-                className="flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white px-2.5 py-1 rounded-full text-[11px] font-bold border border-white/20 transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-bold border border-white/20 transition-all cursor-pointer active:scale-95"
               >
                 <span>Profile</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -595,21 +595,21 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             </p>
           )}
 
-          {/* Action Row: Icons for Like, Share, Bookmark */}
+          {/* Action Row: LARGE Instagram Size Icons for Like, Share, Bookmark */}
           <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {/* Like Icon */}
               <button
                 type="button"
                 onClick={handleLike}
-                className={`p-2 rounded-full flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer border active:scale-90 ${
+                className={`p-2.5 rounded-full flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer border active:scale-110 ${
                   isLiked
                     ? 'bg-rose-600/90 text-white border-rose-500 shadow-md'
-                    : 'bg-black/50 text-white hover:bg-black/70 border-white/15'
+                    : 'bg-black/60 text-white hover:bg-black/80 border-white/20'
                 }`}
                 title="Like"
               >
-                <Heart className={`w-4 h-4 ${isLiked ? 'fill-white stroke-none' : 'stroke-[2]'}`} />
+                <Heart className={`w-6 h-6 ${isLiked ? 'fill-white stroke-none' : 'stroke-[2]'}`} />
                 {likeCount > 0 && <span className="text-xs font-bold">{likeCount}</span>}
               </button>
 
@@ -617,10 +617,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               <button
                 type="button"
                 onClick={handleShare}
-                className="p-2 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md border border-white/15 transition-all cursor-pointer active:scale-90"
+                className="p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20 transition-all cursor-pointer active:scale-110"
                 title="Share"
               >
-                <Share2 className="w-4 h-4 stroke-[2]" />
+                <Share2 className="w-6 h-6 stroke-[2]" />
               </button>
             </div>
 
@@ -628,14 +628,14 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             <button
               type="button"
               onClick={handleBookmark}
-              className={`p-2 rounded-full backdrop-blur-md transition-all cursor-pointer border active:scale-90 ${
+              className={`p-2.5 rounded-full backdrop-blur-md transition-all cursor-pointer border active:scale-110 ${
                 isSaved
-                  ? 'bg-amber-500 text-black border-amber-400'
-                  : 'bg-black/50 text-white hover:bg-black/70 border-white/15'
+                  ? 'bg-white text-black border-white'
+                  : 'bg-black/60 text-white hover:bg-black/80 border-white/20'
               }`}
               title="Bookmark"
             >
-              <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-black stroke-none' : 'stroke-[2]'}`} />
+              <Bookmark className={`w-6 h-6 ${isSaved ? 'fill-black stroke-none' : 'stroke-[2]'}`} />
             </button>
           </div>
         </div>
