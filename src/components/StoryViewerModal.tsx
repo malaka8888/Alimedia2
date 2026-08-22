@@ -149,16 +149,20 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const groupStories = currentGroup?.stories || [];
   const currentStory = groupStories[currentSegmentIdx] || groupStories[0];
 
-  // Mark viewed elephant story
+  const markedElephantsRef = useRef<Set<string>>(new Set());
+
+  // Mark viewed elephant story safely (once per elephant ID per session)
   useEffect(() => {
-    if (currentGroup?.elephantId) {
+    const elId = currentGroup?.elephantId;
+    if (elId && !markedElephantsRef.current.has(elId)) {
+      markedElephantsRef.current.add(elId);
       if (onMarkStoryViewed) {
-        onMarkStoryViewed(currentGroup.elephantId);
+        onMarkStoryViewed(elId);
       }
       try {
         const raw = localStorage.getItem('alimedia_viewed_story_timestamps');
         const map = raw ? JSON.parse(raw) : {};
-        map[currentGroup.elephantId] = Date.now();
+        map[elId] = Date.now();
         localStorage.setItem('alimedia_viewed_story_timestamps', JSON.stringify(map));
       } catch {}
     }

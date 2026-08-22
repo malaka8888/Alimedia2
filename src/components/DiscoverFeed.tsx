@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { Elephant, ElephantPost } from '../types/elephant';
 import {
   Heart,
@@ -49,7 +49,10 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   const [savedPosts, setSavedPosts] = useState<{ [id: string]: boolean }>({});
   const [expandedCaptions, setExpandedCaptions] = useState<{ [id: string]: boolean }>({});
   const [heartAnims, setHeartAnims] = useState<{ [id: string]: { show: boolean; pos?: { x: number; y: number } } }>({});
-  const [activeStoryGroupIndex, setActiveStoryGroupIndex] = useState<number | null>(null);
+  const [activeStoryViewer, setActiveStoryViewer] = useState<{
+    groups: ElephantStoryGroup[];
+    initialIndex: number;
+  } | null>(null);
 
   // Track timestamps when stories for each elephant were viewed by user (persisted in localStorage)
   const [viewedTimestamps, setViewedTimestamps] = useState<{ [elephantId: string]: number }>(() => {
@@ -61,17 +64,25 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     }
   });
 
-  const handleMarkStoryViewed = (elephantId: string) => {
+  const handleMarkStoryViewed = useCallback((elephantId: string) => {
     if (!elephantId) return;
     const now = Date.now();
-    setViewedTimestamps((prev) => {
-      const next = { ...prev, [elephantId]: now };
-      try {
-        localStorage.setItem('alimedia_viewed_story_timestamps', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  };
+    try {
+      const raw = localStorage.getItem('alimedia_viewed_story_timestamps');
+      const map = raw ? JSON.parse(raw) : {};
+      map[elephantId] = now;
+      localStorage.setItem('alimedia_viewed_story_timestamps', JSON.stringify(map));
+    } catch {}
+  }, []);
+
+  const refreshViewedState = useCallback(() => {
+    try {
+      const raw = localStorage.getItem('alimedia_viewed_story_timestamps');
+      if (raw) {
+        setViewedTimestamps(JSON.parse(raw));
+      }
+    } catch {}
+  }, []);
 
   const lastTapRef = useRef<{ [id: string]: number }>({});
 
@@ -459,7 +470,12 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               return (
                 <div
                   key={group.elephantId || groupIdx}
-                  onClick={() => setActiveStoryGroupIndex(groupIdx)}
+                  onClick={() =>
+                    setActiveStoryViewer({
+                      groups: compiledStoryGroups,
+                      initialIndex: groupIdx,
+                    })
+                  }
                   className="flex-shrink-0 w-24 sm:w-26 cursor-pointer group"
                 >
                   <div
@@ -1012,14 +1028,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
       {/* ----------------------------------------------------------------- */}
       {/* 5. FULLSCREEN STORY VIEWER MODAL                                  */}
       {/* ----------------------------------------------------------------- */}
-      {activeStoryGroupIndex !== null && (
+      {activeStoryViewer !== null && (
         <StoryViewerModal
-          storyGroups={compiledStoryGroups}
-          initialGroupIndex={activeStoryGroupIndex}
+          storyGroups={activeStoryViewer.groups}
+          initialGroupIndex={activeStoryViewer.initialIndex}
           language={language}
-          onClose={() => setActiveStoryGroupIndex(null)}
+          onClose={() => {
+            setActiveStoryViewer(null);
+            refreshViewedState();
+          }}
           onSelectElephant={(el) => {
-            setActiveStoryGroupIndex(null);
+            setActiveStoryViewer(null);
+            refreshViewedState();
             onSelectElephant(el);
           }}
           onShowNotification={showNotificationFallback}
