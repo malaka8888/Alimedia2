@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Elephant,
   CulturalEvent,
+  ElephantPost,
   ElephantType,
   Gender,
   ElephantSource
@@ -41,11 +42,23 @@ import {
   UploadCloud,
   Camera,
   Loader2,
-  Check
+  Check,
+  LayoutDashboard,
+  MessageSquare,
+  Flame,
+  Heart,
+  Share2,
+  Layers,
+  Settings,
+  HelpCircle,
+  Clock,
+  MapPin,
+  Tag
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Language, translations } from '../utils/translations';
 import { BulkImportElephants } from './BulkImportElephants';
+import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
 
 // Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
 const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
@@ -96,7 +109,12 @@ interface AdminPanelProps {
   elephants: Elephant[];
   events: CulturalEvent[];
   onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>;
-  onDeleteElephant: (id: string) => Promise<void>;
+  onDeleteElephant: (id: string) => Promise<{
+    deletedElephantName: string;
+    postsDeleted: number;
+    usersUpdated: number;
+    eventsUpdated: number;
+  } | void>;
   onToggleVerification: (id: string, verified: boolean) => Promise<void>;
   onToggleFeatured: (id: string, isFeatured: boolean) => Promise<void>;
   onToggleLive: (id: string, isLive: boolean) => Promise<void>;
@@ -119,7 +137,8 @@ const POPULAR_PERAHERAS = [
   'Gangarama Navam Maha Perahera (නවම් පෙරහැර)',
   'Kotte Sri Rajamaha Vihara Perahera (කෝට්ටේ පෙරහැර)',
   'Devinuwara Esala Perahera (දෙවිනුවර පෙරහැර)',
-  'Aluth Sahal Mangallaya (අලුත් සහල් මංගල්‍යය)'
+  'Aluth Sahal Mangallaya (අලුත් සහල් මංගල්‍යය)',
+  'Seenigama Devalaya Perahera (සීනිගම දේවාල පෙරහැර)'
 ];
 
 const PRESET_ELEPHANT_PHOTOS = [
@@ -132,6 +151,15 @@ const PRESET_ELEPHANT_PHOTOS = [
   'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&w=1200&q=80',
   'https://images.unsplash.com/photo-1544979590-37e9b47eb705?auto=format&fit=crop&w=1200&q=80'
 ];
+
+export type AdminCategoryTab =
+  | 'overview'
+  | 'elephants'
+  | 'editor'
+  | 'posts'
+  | 'events'
+  | 'bulk_import'
+  | 'database';
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   elephants,
@@ -156,12 +184,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordInput, setPasswordInput] = useState<string>('admin@alimedia');
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Admin Navigation Tabs
-  const [adminTab, setAdminTab] = useState<'elephants' | 'editor' | 'bulk_import' | 'events' | 'database'>('elephants');
+  // Admin Navigation Tabs (Categorized & Mobile-friendly)
+  const [adminTab, setAdminTab] = useState<AdminCategoryTab>('overview');
   
-  // Search and Filter State
+  // Search and Filter State for Elephants
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'tusker' | 'elephant' | 'verified' | 'unverified' | 'featured'>('all');
+  const [filterType, setFilterType] = useState<
+    'all' | 'tusker' | 'elephant' | 'verified' | 'unverified' | 'featured' | 'live' | 'living' | 'memorial'
+  >('all');
+
+  // Community Posts State
+  const [communityPosts, setCommunityPosts] = useState<ElephantPost[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [postsSearch, setPostsSearch] = useState('');
+  const [postFilter, setPostFilter] = useState<'all' | 'stories' | 'feed'>('all');
 
   // Form Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -215,11 +251,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Gallery Image Upload State & Ref
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingGallery, setIsUploadingGallery] = useState(false);
-  const [isDraggingOverGallery, setIsDraggingOverGallery] = useState(false);
+
+  // Cascade Deletion Confirmation Modal State
+  const [deletingElephantTarget, setDeletingElephantTarget] = useState<Elephant | null>(null);
+  const [isDeletingCascade, setIsDeletingCascade] = useState(false);
 
   const showToast = (msg: string) => {
     setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(null), 3000);
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  // Load community posts when entering moderation tab or overview
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadCommunityPosts();
+    }
+  }, [isAuthenticated, adminTab]);
+
+  const loadCommunityPosts = async () => {
+    try {
+      setIsLoadingPosts(true);
+      const posts = await getAllElephantPosts();
+      setCommunityPosts(posts);
+    } catch (err) {
+      console.warn('Could not load community posts:', err);
+    } finally {
+      setIsLoadingPosts(false);
+    }
   };
 
   // Handle Login
@@ -374,12 +432,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showToast(`${elephant.name} LIVE Status ${newStatus ? 'සක්‍රියයි (LIVE)' : 'අක්‍රියයි'}`);
   };
 
-  // Delete Elephant
-  const handleDeleteElephantClick = async (elephant: Elephant) => {
-    if (!elephant.id) return;
-    if (confirm(`ඔබට "${elephant.name}" දත්ත ගොනුව ස්ථිරවම මකා දැමීමට අවශ්‍යද?`)) {
-      await onDeleteElephant(elephant.id);
-      showToast(`${elephant.name} දත්ත ගොනුව මකා දමන ලදී.`);
+  // Trigger Cascade Delete Confirmation Modal
+  const handleTriggerCascadeDelete = (elephant: Elephant) => {
+    setDeletingElephantTarget(elephant);
+  };
+
+  // Confirm Cascade Deletion from Firestore
+  const handleConfirmCascadeDelete = async () => {
+    if (!deletingElephantTarget || !deletingElephantTarget.id) return;
+    try {
+      setIsDeletingCascade(true);
+      const res = await onDeleteElephant(deletingElephantTarget.id);
+      
+      const postsCount = res && typeof res === 'object' && 'postsDeleted' in res ? res.postsDeleted : 0;
+      showToast(
+        `"${deletingElephantTarget.name}" සහ සම්බන්ධිත සියලු දත්ත (${postsCount} posts/stories/links) Database එකෙන් ස්ථිරවම ඉවත් කරන ලදී!`
+      );
+      setDeletingElephantTarget(null);
+      await loadCommunityPosts();
+    } catch (err: any) {
+      console.error('Error cascading deleting elephant:', err);
+      alert(`දත්ත ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
+    } finally {
+      setIsDeletingCascade(false);
+    }
+  };
+
+  // Moderate / Delete Single Community Post
+  const handleDeletePost = async (postId: string) => {
+    if (confirm('ඔබට මෙම පරිශීලක පළකිරීම/Story එක database එකෙන් ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) {
+      try {
+        await deleteElephantPost(postId);
+        setCommunityPosts((prev) => prev.filter((p) => p.id !== postId));
+        showToast('පළකිරීම සාර්ථකව මකා දමන ලදී.');
+      } catch (err: any) {
+        alert(`Error deleting post: ${err.message || err}`);
+      }
     }
   };
 
@@ -402,7 +490,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         };
       });
 
-      showToast(`ඡායාරූප ${fileArray.length} ක් Gallery එකෙන් සාර්ථකව එක් කරන ලදී! (${fileArray.length} photo(s) uploaded)`);
+      showToast(`ඡායාරූප ${fileArray.length} ක් Gallery එකෙන් එක් කරන ලදී!`);
     } catch (err: any) {
       console.error('Gallery upload error:', err);
       alert('ඡායාරූපය upload කිරීමේදී දෝෂයක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
@@ -411,25 +499,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       if (galleryInputRef.current) {
         galleryInputRef.current.value = '';
       }
-    }
-  };
-
-  const handleSinglePhotoFile = async (index: number, file: File) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    try {
-      setIsUploadingGallery(true);
-      const compressedUrl = await compressImageFile(file, 1280, 1280, 0.85);
-      setFormData((prev) => {
-        const next = [...prev.photos];
-        next[index] = compressedUrl;
-        return { ...prev, photos: next };
-      });
-      showToast('ඡායාරූපය යාවත්කාලීන කරන ලදී! (Photo updated from gallery)');
-    } catch (err) {
-      console.error(err);
-      alert('ඡායාරූපය upload කිරීමට නොහැකි විය.');
-    } finally {
-      setIsUploadingGallery(false);
     }
   };
 
@@ -541,6 +610,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (filterType === 'verified' && !el.verified) return false;
     if (filterType === 'unverified' && el.verified) return false;
     if (filterType === 'featured' && !el.isFeatured) return false;
+    if (filterType === 'live' && !el.isLive) return false;
+    if (filterType === 'living' && el.status === 'memorial') return false;
+    if (filterType === 'memorial' && el.status !== 'memorial') return false;
 
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -549,6 +621,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       (el.sinhalaName && el.sinhalaName.includes(q)) ||
       (el.location && el.location.toLowerCase().includes(q)) ||
       (el.organization && el.organization.toLowerCase().includes(q))
+    );
+  });
+
+  // Filtered Community Posts
+  const filteredCommunityPosts = communityPosts.filter((post) => {
+    if (postFilter === 'stories' && !post.isStory && !post.isStoryOnly) return false;
+    if (postFilter === 'feed' && post.isStoryOnly) return false;
+
+    if (!postsSearch) return true;
+    const q = postsSearch.toLowerCase();
+    return (
+      post.elephantName.toLowerCase().includes(q) ||
+      post.authorName.toLowerCase().includes(q) ||
+      post.authorUsername.toLowerCase().includes(q) ||
+      (post.caption && post.caption.toLowerCase().includes(q))
     );
   });
 
@@ -733,7 +820,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // VIEW: Authenticated Full Admin Dashboard
   // -------------------------------------------------------------
   return (
-    <div className="fixed inset-0 z-50 bg-[#F7F8F4] overflow-y-auto flex flex-col text-[#062E22] animate-fadeIn">
+    <div className="fixed inset-0 z-50 bg-[#F7F8F4] overflow-y-auto flex flex-col text-[#062E22] animate-fadeIn pb-16 sm:pb-8">
       {/* Toast feedback */}
       {statusMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
@@ -742,46 +829,132 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Admin Top Header */}
-      <header className="sticky top-0 z-40 bg-[#FAF9F5] border-b border-zinc-200/80 px-4 py-3 shadow-2xs">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          {/* Logo & Admin Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white border border-zinc-200 p-0.5 flex items-center justify-center shadow-md">
+      {/* Cascading Deletion Confirmation Modal */}
+      {deletingElephantTarget && (
+        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-red-950">
+                  ස්ථිර මකා දැමීම (Cascade Delete)
+                </h3>
+                <p className="text-xs text-red-700 font-medium">
+                  මෙම ක්‍රියාව ආපසු හැරවිය නොහැක (Permanent Action)
+                </p>
+              </div>
+            </div>
+
+            {/* Elephant Target Info */}
+            <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+              <img
+                src={deletingElephantTarget.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0]}
+                alt={deletingElephantTarget.name}
+                className="w-14 h-14 rounded-xl object-cover border border-red-200"
+              />
+              <div className="min-w-0">
+                <h4 className="font-extrabold text-sm text-red-950 truncate">
+                  {deletingElephantTarget.name}
+                </h4>
+                <p className="text-xs text-red-800 font-sinhala truncate">
+                  {deletingElephantTarget.sinhalaName || 'අලි පැතිකඩ'}
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-200 text-red-900">
+                  ID: {deletingElephantTarget.id}
+                </span>
+              </div>
+            </div>
+
+            {/* Cascade Cleanup Warning List */}
+            <div className="space-y-2 text-xs text-zinc-700 bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
+              <p className="font-bold text-zinc-900 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-red-600" />
+                <span>පහත සියලුම දත්ත Cloud Firestore වෙතින් ස්ථිරවම මකා දැමෙනු ඇත:</span>
+              </p>
+              <ul className="space-y-1.5 pl-5 list-disc text-zinc-600 text-[11px]">
+                <li><b>Master Elephant Profile:</b> අලියාගේ සියලු ජීව දත්ත හා විස්තර</li>
+                <li><b>Community Posts & Stories:</b> මෙම අලියාට අදාළව පරිශීලකයින් පළ කළ සියලු ඡායාරූප, Stories හා Posts</li>
+                <li><b>Followers:</b> සියලු Users ගේ Followed Elephant lists වලින් ඉවත් කිරීම</li>
+                <li><b>Cultural Events:</b> පෙරහැර සහභාගීත්ව සටහන් වලින් ඉවත් කිරීම</li>
+              </ul>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingElephantTarget(null)}
+                disabled={isDeletingCascade}
+                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCascadeDelete}
+                disabled={isDeletingCascade}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center gap-2"
+              >
+                {isDeletingCascade ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>මකා දමමින් පවතී...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>ඔව්, සියල්ල මකා දමන්න (Delete All)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Top Header (Mobile Optimized) */}
+      <header className="sticky top-0 z-40 bg-[#FAF9F5] border-b border-zinc-200/80 px-3 sm:px-6 py-2.5 sm:py-3 shadow-2xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+          {/* Logo & Identity */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-zinc-200 p-0.5 flex items-center justify-center shadow-md flex-shrink-0">
               <img
                 src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
                 alt="අලිMedia Logo"
                 className="w-full h-full object-contain"
               />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-[#062E22]">
-                  අලිMedia <span className="text-emerald-600">Admin Control</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-black text-sm sm:text-base tracking-tight text-[#062E22] truncate">
+                  Admin <span className="text-emerald-600">Console</span>
                 </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
-                  SUPER ADMIN
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 uppercase">
+                  Super Admin
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-500 font-mono">
-                Logged in as: {DEFAULT_ADMIN_EMAIL}
+              <p className="text-[10px] text-zinc-500 font-mono truncate hidden sm:block">
+                {DEFAULT_ADMIN_EMAIL}
               </p>
             </div>
           </div>
 
           {/* Top Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
               onClick={onClose}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] shadow-2xs transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] shadow-2xs transition-colors cursor-pointer"
             >
               <Eye className="w-3.5 h-3.5 text-emerald-700" />
-              <span>View Website (වෙබ් අඩවිය)</span>
+              <span className="hidden sm:inline">View Website</span>
+              <span className="sm:hidden">Exit</span>
             </button>
 
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-bold text-red-700 transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-bold text-red-700 transition-colors cursor-pointer"
               title="Logout"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -791,129 +964,294 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </header>
 
-      {/* Admin Body Container */}
-      <div className="max-w-6xl mx-auto w-full p-4 sm:p-6 space-y-6 flex-1">
-        {/* Metric Overview Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-            <div className="text-[11px] font-bold text-zinc-400 uppercase">Total Elephants</div>
-            <div className="text-2xl font-black text-[#062E22] mt-1">{elephants.length}</div>
-            <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">ලියාපදිංචි අලි ඇතුන්</div>
-          </div>
+      {/* Categorized Navigation Bar (Responsive Scrollable Tabs) */}
+      <div className="bg-white border-b border-zinc-200/90 sticky top-[49px] sm:top-[57px] z-30 shadow-xs px-3 sm:px-6">
+        <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-2.5 no-scrollbar scroll-smooth">
+          {/* Overview */}
+          <button
+            onClick={() => setAdminTab('overview')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'overview'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>සාරාංශය (Overview)</span>
+          </button>
 
-          <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-            <div className="text-[11px] font-bold text-amber-600 uppercase flex items-center gap-1">
-              <Crown className="w-3 h-3" />
-              <span>Tuskers (ඇත්තු)</span>
-            </div>
-            <div className="text-2xl font-black text-amber-900 mt-1">
-              {elephants.filter((e) => e.type === 'tusker').length}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">දළ ඇතුන් සංඛ්‍යාව</div>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-            <div className="text-[11px] font-bold text-emerald-600 uppercase flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" />
-              <span>Verified Badges</span>
-            </div>
-            <div className="text-2xl font-black text-emerald-900 mt-1">
-              {elephants.filter((e) => e.verified).length}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">සත්‍යාපිත ලාංඡන</div>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-            <div className="text-[11px] font-bold text-purple-600 uppercase flex items-center gap-1">
-              <Star className="w-3 h-3" />
-              <span>Featured Stories</span>
-            </div>
-            <div className="text-2xl font-black text-purple-900 mt-1">
-              {elephants.filter((e) => e.isFeatured).length}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">විශේෂාංග කතා</div>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs col-span-2 sm:col-span-1">
-            <div className="text-[11px] font-bold text-blue-600 uppercase flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              <span>Cultural Events</span>
-            </div>
-            <div className="text-2xl font-black text-blue-900 mt-1">{events.length}</div>
-            <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පෙරහැර වැඩසටහන්</div>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
+          {/* Elephants List */}
           <button
             onClick={() => setAdminTab('elephants')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
               adminTab === 'elephants'
                 ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
             }`}
           >
             <Crown className="w-3.5 h-3.5" />
-            <span>Elephant Profiles & Toggles (නාමාවලි පාලනය)</span>
+            <span>අලි නාමාවලිය ({elephants.length})</span>
           </button>
 
+          {/* New / Edit Profile */}
           <button
             onClick={handleOpenCreateForm}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
               adminTab === 'editor'
                 ? 'bg-[#062E22] text-white shadow-sm'
                 : 'bg-emerald-700 text-white hover:bg-emerald-800'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>{editingId ? 'Edit Elephant (සංස්කරණය)' : '+ New Elephant Profile (නව අලියෙකු එක් කරන්න)'}</span>
+            <span>{editingId ? 'සංස්කරණය (Edit)' : '+ නව අලියෙකු (Add Profile)'}</span>
           </button>
 
+          {/* Community Posts & Stories */}
+          <button
+            onClick={() => setAdminTab('posts')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'posts'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>පළකිරීම් & Stories ({communityPosts.length})</span>
+          </button>
+
+          {/* Cultural Events */}
+          <button
+            onClick={() => setAdminTab('events')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'events'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>පෙරහැර වැඩසටහන් ({events.length})</span>
+          </button>
+
+          {/* Bulk Import */}
           <button
             onClick={() => setAdminTab('bulk_import')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
               adminTab === 'bulk_import'
                 ? 'bg-[#062E22] text-white shadow-sm'
                 : 'bg-amber-500 hover:bg-amber-600 text-zinc-950 shadow-xs'
             }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Bulk Import (Excel / CSV තොග ඇතුළත් කිරීම)</span>
+            <span>Bulk Import (Excel/CSV)</span>
           </button>
 
-          <button
-            onClick={() => setAdminTab('events')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              adminTab === 'events'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Cultural & Perahera Events (පෙරහැර නිවේදන)</span>
-          </button>
-
+          {/* Database & Tools */}
           <button
             onClick={() => setAdminTab('database')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
               adminTab === 'database'
                 ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            <span>System & Database Backup (දත්ත පද්ධතිය)</span>
+            <span>පද්ධති උපස්ථ (Backup & DB)</span>
           </button>
         </div>
+      </div>
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 1: Elephant Profiles & Quick Toggle Control Table */}
-        {/* ------------------------------------------------------------- */}
+      {/* Main Admin Content Container */}
+      <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 space-y-6 flex-1">
+        {/* ============================================================= */}
+        {/* CATEGORY 1: OVERVIEW & DASHBOARD                              */}
+        {/* ============================================================= */}
+        {adminTab === 'overview' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-zinc-400 uppercase">Total Elephants</div>
+                <div className="text-2xl font-black text-[#062E22] mt-1">{elephants.length}</div>
+                <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">ලියාපදිංචි අලි</div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-amber-600 uppercase flex items-center gap-1">
+                  <Crown className="w-3 h-3" />
+                  <span>Tuskers</span>
+                </div>
+                <div className="text-2xl font-black text-amber-900 mt-1">
+                  {elephants.filter((e) => e.type === 'tusker').length}
+                </div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">දළ ඇතුන්</div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-emerald-600 uppercase flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>Verified</span>
+                </div>
+                <div className="text-2xl font-black text-emerald-900 mt-1">
+                  {elephants.filter((e) => e.verified).length}
+                </div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">සත්‍යාපිත ලාංඡන</div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-purple-600 uppercase flex items-center gap-1">
+                  <Star className="w-3 h-3" />
+                  <span>Featured</span>
+                </div>
+                <div className="text-2xl font-black text-purple-900 mt-1">
+                  {elephants.filter((e) => e.isFeatured).length}
+                </div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">Stories Spotlight</div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-blue-600 uppercase flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" />
+                  <span>Posts & Stories</span>
+                </div>
+                <div className="text-2xl font-black text-blue-900 mt-1">
+                  {communityPosts.length}
+                </div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පරිශීලක පළකිරීම්</div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-rose-600 uppercase flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  <span>Events</span>
+                </div>
+                <div className="text-2xl font-black text-rose-900 mt-1">{events.length}</div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පෙරහැර වැඩසටහන්</div>
+              </div>
+            </div>
+
+            {/* Quick Action Shortcuts Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={handleOpenCreateForm}
+                className="p-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    <span>නව අලියෙකු ලියාපදිංචි කරන්න</span>
+                  </h4>
+                  <p className="text-xs text-emerald-100 mt-1">
+                    ඡායාරූප, ඇත් දළ විස්තර, පෙරහැර සහභාගීත්ව සටහන් එක් කරන්න.
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-emerald-200 group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <button
+                onClick={() => setAdminTab('bulk_import')}
+                className="p-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Excel / CSV තොග ඇතුළත් කිරීම</span>
+                  </h4>
+                  <p className="text-xs text-amber-950/80 mt-1">
+                    අලි ඇතුන් 100+ ක් එකවර ක්ෂණිකව upload කරන්න.
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-900 group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <button
+                onClick={() => setAdminTab('posts')}
+                className="p-4 bg-[#062E22] hover:bg-emerald-950 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>පරිශීලක Posts Moderation</span>
+                  </h4>
+                  <p className="text-xs text-zinc-300 mt-1">
+                    පරිශීලකයින් submit කළ ඡායාරූප පරීක්ෂා කර පාලනය කරන්න.
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+
+            {/* Recent Elephants Quick Peek */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-base text-[#062E22]">
+                    අලුත්ම අලි පැතිකඩ (Recent Profiles)
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    පද්ධතියේ ලියාපදිංචි කර ඇති ප්‍රමුඛ අලි ඇතුන්
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAdminTab('elephants')}
+                  className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
+                >
+                  <span>සියල්ල බලන්න (View All)</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {elephants.slice(0, 6).map((el) => (
+                  <div
+                    key={el.id}
+                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 flex items-center justify-between gap-3 hover:bg-emerald-50/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={el.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0]}
+                        alt={el.name}
+                        className="w-11 h-11 rounded-xl object-cover border border-zinc-200 flex-shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-[#062E22] truncate flex items-center gap-1">
+                          <span>{el.name}</span>
+                          {el.verified && <ShieldCheck className="w-3 h-3 text-emerald-600" />}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 font-sinhala truncate">
+                          {el.sinhalaName || el.organization || 'Sri Lanka'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleOpenEditForm(el)}
+                        className="p-1.5 text-zinc-500 hover:text-emerald-700 rounded-lg hover:bg-white transition-colors"
+                        title="Edit"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleTriggerCascadeDelete(el)}
+                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-white transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================= */}
+        {/* CATEGORY 2: ELEPHANT DIRECTORY MANAGEMENT                      */}
+        {/* ============================================================= */}
         {adminTab === 'elephants' && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-fadeIn">
             {/* Search and Filters Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -925,20 +1263,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Filter chips */}
-              <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto no-scrollbar">
+              {/* Filter chips (Mobile friendly scroll) */}
+              <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto no-scrollbar py-0.5">
                 {[
-                  { id: 'all', label: 'All' },
+                  { id: 'all', label: `All (${elephants.length})` },
                   { id: 'tusker', label: 'Tuskers (ඇත්තු)' },
                   { id: 'elephant', label: 'Elephants (අලින්)' },
                   { id: 'verified', label: 'Verified' },
                   { id: 'unverified', label: 'Unverified' },
-                  { id: 'featured', label: 'Featured' },
+                  { id: 'featured', label: 'Featured Stories' },
+                  { id: 'live', label: 'LIVE' },
+                  { id: 'memorial', label: 'Memorial' },
                 ].map((f) => (
                   <button
                     key={f.id}
                     onClick={() => setFilterType(f.id as any)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
                       filterType === f.id
                         ? 'bg-[#062E22] text-white'
                         : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
@@ -950,8 +1290,132 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Elephants List Table / Cards */}
-            <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
+            {/* Mobile View: Responsive Elephant Cards */}
+            <div className="block lg:hidden space-y-3">
+              {filteredElephants.length === 0 ? (
+                <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs">
+                  කිසිදු හීලෑ අලියෙකු හමු නොවීය.
+                </div>
+              ) : (
+                filteredElephants.map((el) => {
+                  const isTusker = el.type === 'tusker';
+                  const photo = el.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0];
+
+                  return (
+                    <div
+                      key={el.id}
+                      className="bg-white rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
+                    >
+                      {/* Top Row: Photo + Name + Type */}
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={photo}
+                          alt={el.name}
+                          className="w-14 h-14 rounded-2xl object-cover border border-zinc-200 flex-shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="font-extrabold text-sm text-[#062E22] truncate">
+                              {el.name}
+                            </h4>
+                            {el.verified && (
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600/20" />
+                            )}
+                          </div>
+                          {el.sinhalaName && (
+                            <p className="text-xs text-emerald-800 font-sinhala truncate">
+                              {el.sinhalaName}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                isTusker ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
+                              }`}
+                            >
+                              {isTusker ? 'Tusker (ඇතා)' : 'Elephant (අලියා)'}
+                            </span>
+                            <span className="text-[10px] text-zinc-400">
+                              {el.age ? `${el.age} yrs` : 'N/A'} • {el.location || 'SL'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Toggles Row (Touch optimized) */}
+                      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-zinc-100">
+                        {/* Verified Toggle */}
+                        <button
+                          onClick={() => handleQuickVerify(el)}
+                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            el.verified
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                              : 'bg-zinc-100 text-zinc-500'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>{el.verified ? 'Verified' : 'Verify'}</span>
+                        </button>
+
+                        {/* Featured Toggle */}
+                        <button
+                          onClick={() => handleQuickFeatured(el)}
+                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            el.isFeatured
+                              ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                              : 'bg-zinc-100 text-zinc-500'
+                          }`}
+                        >
+                          <Star className="w-3 h-3" />
+                          <span>{el.isFeatured ? 'Featured' : 'Feature'}</span>
+                        </button>
+
+                        {/* Live Toggle */}
+                        <button
+                          onClick={() => handleQuickLive(el)}
+                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            el.isLive
+                              ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                              : 'bg-zinc-100 text-zinc-500'
+                          }`}
+                        >
+                          <Radio className="w-3 h-3" />
+                          <span>{el.isLive ? 'LIVE' : 'Go LIVE'}</span>
+                        </button>
+                      </div>
+
+                      {/* Card Action Buttons (Edit, View, Delete) */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
+                        <button
+                          onClick={() => onViewElephant(el)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-xs font-bold text-zinc-700 flex items-center justify-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditForm(el)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleTriggerCascadeDelete(el)}
+                          className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center"
+                          title="Cascade Delete Elephant"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop View: High-density Table */}
+            <div className="hidden lg:block bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#FAF9F5] border-b border-zinc-200 text-zinc-500 font-extrabold uppercase tracking-wider">
@@ -975,9 +1439,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     ) : (
                       filteredElephants.map((elephant) => {
                         const isTusker = elephant.type === 'tusker';
-                        const photo = elephant.photos && elephant.photos[0]
-                          ? elephant.photos[0]
-                          : PRESET_ELEPHANT_PHOTOS[0];
+                        const photo = elephant.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0];
 
                         return (
                           <tr key={elephant.id} className="hover:bg-zinc-50/80 transition-colors">
@@ -1033,19 +1495,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               </div>
                             </td>
 
-                            {/* Verification Badge Toggle (Requested feature) */}
+                            {/* Verification Badge Toggle */}
                             <td className="py-3 px-3 text-center">
                               <button
                                 onClick={() => handleQuickVerify(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer border ${
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
                                   elephant.verified
-                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200'
-                                    : 'bg-zinc-100 text-zinc-500 border-zinc-300 hover:bg-zinc-200'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200'
+                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
                                 }`}
-                                title="Click to Toggle Verification"
                               >
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                <span>{elephant.verified ? 'Verified ✓' : 'Unverified'}</span>
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>{elephant.verified ? 'Verified (සත්‍යාපිතයි)' : 'Unverified'}</span>
                               </button>
                             </td>
 
@@ -1053,15 +1514,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <td className="py-3 px-3 text-center">
                               <button
                                 onClick={() => handleQuickFeatured(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer border ${
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
                                   elephant.isFeatured
-                                    ? 'bg-purple-100 text-purple-900 border-purple-300 hover:bg-purple-200'
-                                    : 'bg-zinc-100 text-zinc-400 border-zinc-200 hover:bg-zinc-200'
+                                    ? 'bg-purple-100 text-purple-900 border border-purple-300 hover:bg-purple-200'
+                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
                                 }`}
-                                title="Click to Toggle Story Spotlight"
                               >
-                                <Star className="w-3.5 h-3.5" />
-                                <span>{elephant.isFeatured ? 'Featured ⭐' : 'Regular'}</span>
+                                <Star className="w-3 h-3" />
+                                <span>{elephant.isFeatured ? 'Featured Story' : 'Standard'}</span>
                               </button>
                             </td>
 
@@ -1069,39 +1529,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <td className="py-3 px-3 text-center">
                               <button
                                 onClick={() => handleQuickLive(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer border ${
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
                                   elephant.isLive
-                                    ? 'bg-red-100 text-red-900 border-red-300 hover:bg-red-200 animate-pulse'
-                                    : 'bg-zinc-100 text-zinc-400 border-zinc-200 hover:bg-zinc-200'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300 animate-pulse hover:bg-rose-200'
+                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
                                 }`}
-                                title="Click to Toggle LIVE status"
                               >
-                                <Radio className="w-3.5 h-3.5" />
-                                <span>{elephant.isLive ? 'LIVE 🔴' : 'Off'}</span>
+                                <Radio className="w-3 h-3" />
+                                <span>{elephant.isLive ? 'LIVE ACTIVE' : 'Offline'}</span>
                               </button>
                             </td>
 
-                            {/* Actions */}
+                            {/* Actions (View / Edit / Delete) */}
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   onClick={() => onViewElephant(elephant)}
-                                  className="p-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg transition-colors cursor-pointer"
-                                  title="View Public Profile"
+                                  className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+                                  title="View on Website"
                                 >
                                   <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => handleOpenEditForm(elephant)}
-                                  className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit Elephant Profile"
+                                  className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit Elephant"
                                 >
                                   <Edit className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteElephantClick(elephant)}
-                                  className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors cursor-pointer"
-                                  title="Delete Profile"
+                                  onClick={() => handleTriggerCascadeDelete(elephant)}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Permanently Delete and Cascade Clean DB"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -1118,706 +1577,461 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 2: Full Elephant Profile Creator & Editor Form */}
-        {/* ------------------------------------------------------------- */}
+        {/* ============================================================= */}
+        {/* CATEGORY 3: PROFILE EDITOR (ADD / EDIT FORM)                   */}
+        {/* ============================================================= */}
         {adminTab === 'editor' && (
-          <form onSubmit={handleSubmitElephant} className="space-y-6">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-zinc-200 shadow-sm space-y-6">
-              {/* Form Title */}
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('elephants')}
-                    className="p-2 text-zinc-500 hover:text-zinc-800 rounded-xl bg-zinc-100 hover:bg-zinc-200 transition-colors"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </button>
-                  <div>
-                    <h2 className="text-xl font-extrabold text-[#062E22]">
-                      {editingId ? 'Edit Elephant Profile (පැතිකඩ සංස්කරණය)' : 'Register New Elephant (නව අලියෙකු ලියාපදිංචි කිරීම)'}
-                    </h2>
-                    <p className="text-xs text-zinc-500">
-                      සත්‍යාපිත තොරතුරු පමණක් ඇතුළත් කරන්න (Verified Data Only)
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('elephants')}
-                    className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-6 py-2 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{isSaving ? 'සුරැකෙමින් පවතී...' : 'Save Profile (සුරකින්න)'}</span>
-                  </button>
-                </div>
+          <form onSubmit={handleSubmitElephant} className="space-y-6 animate-fadeIn pb-12">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-[#062E22] flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-amber-500" />
+                  <span>
+                    {editingId ? `සංස්කරණය: ${formData.name || 'Elephant'}` : 'නව හීලෑ අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
+                  </span>
+                </h3>
+                <p className="text-xs text-zinc-500 font-medium">
+                  ශ්‍රී ලාංකීය හීලෑ අලි ඇතුන්ගේ තොරතුරු නිවැරදිව ඇතුළත් කරන්න.
+                </p>
               </div>
 
-              {/* 1. Basic Identifiers */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-emerald-700" />
-                  <span>1. මූලික හඳුනාගැනීම (Primary Identity)</span>
-                </h3>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('elephants')}
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  අවලංගු කරන්න (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 sm:flex-initial px-5 py-2 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>සුරකිමින්...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>{editingId ? 'යාවත්කාලීන කරන්න' : 'සුරකින්න (Save)'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Primary Name (ඉංග්‍රීසි නම) *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g. Indiraja"
-                      required
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
+            {/* Section 1: Basic Identity */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-4 h-4 text-emerald-700" />
+                <span>1. මූලික අනන්‍යතාව (Basic Identity & Profile Badges)</span>
+              </h4>
 
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Sinhala Name (සිංහල නම)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.sinhalaName || ''}
-                      onChange={(e) => setFormData({ ...formData, sinhalaName: e.target.value })}
-                      placeholder="e.g. ඉන්දිරාජා"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold font-sinhala text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Aliases / Other Names (වෙනත් නම් - කොමා වලින් වෙන් කරන්න)
-                    </label>
-                    <input
-                      type="text"
-                      value={otherNamesText}
-                      onChange={(e) => setOtherNamesText(e.target.value)}
-                      placeholder="e.g. Indi Raja, Maligawa Indiraja"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Primary English Name */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">
+                    Primary Name (English)*
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Indiraja / Kandula"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-1">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Type (වර්ගය)
-                    </label>
-                    <select
-                      value={formData.type}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value as ElephantType })}
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    >
-                      <option value="tusker">Tusker (ඇතා - දළ ඇතා)</option>
-                      <option value="elephant">Elephant (අලියා / ඇතින්න)</option>
-                    </select>
-                  </div>
+                {/* Sinhala Name */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">
+                    Sinhala Script Name (සිංහල නම)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.sinhalaName || ''}
+                    onChange={(e) => setFormData({ ...formData, sinhalaName: e.target.value })}
+                    placeholder="e.g. ඉන්දිරාජා"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none font-sinhala"
+                  />
+                </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Gender (ස්ත්‍රී / පුරුෂ භාවය)
-                    </label>
-                    <select
-                      value={formData.gender}
-                      onChange={(e) => setFormData({ ...formData, gender: e.target.value as Gender })}
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    >
-                      <option value="male">Male (පිරිමි)</option>
-                      <option value="female">Female (ගැහැණු / ඇතින්න)</option>
-                    </select>
-                  </div>
+                {/* Type: Tusker vs Elephant */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Type (වර්ගය)</label>
+                  <select
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value as ElephantType })}
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  >
+                    <option value="tusker">Tusker (ඇතා - දළ සහිත)</option>
+                    <option value="elephant">Elephant (අලියා / ඇලියා)</option>
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Estimated Age (වයස)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.age !== undefined ? formData.age : ''}
-                      onChange={(e) => setFormData({ ...formData, age: e.target.value ? Number(e.target.value) : '' })}
-                      placeholder="e.g. 44"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
+                {/* Gender */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Gender (ස්ත්‍රී / පුරුෂ භාවය)</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value as Gender })}
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  >
+                    <option value="male">Male (පිරිමි)</option>
+                    <option value="female">Female (ගැහැණු / ඇතින්න)</option>
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Status (තත්ත්වය)
-                    </label>
-                    <select
-                      value={formData.status || 'living'}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    >
-                      <option value="living">Living (ජීවතුන් අතර)</option>
-                      <option value="memorial">Memorial / National Treasure (ජාතික වස්තුවක් වූ)</option>
-                    </select>
-                  </div>
+                {/* Age */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Age / වයස (Years)</label>
+                  <input
+                    type="text"
+                    value={formData.age || ''}
+                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                    placeholder="e.g. 45 or 40-45"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Status */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Status (තත්ත්වය)</label>
+                  <select
+                    value={formData.status || 'living'}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  >
+                    <option value="living">Living (ජීවත්වන)</option>
+                    <option value="memorial">Memorial (අභාවප්‍රාප්ත / අනුස්මරණ)</option>
+                  </select>
+                </div>
+
+                {/* Custom Badge */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Custom Title / Badge</label>
+                  <input
+                    type="text"
+                    value={formData.customBadge || ''}
+                    onChange={(e) => setFormData({ ...formData, customBadge: e.target.value })}
+                    placeholder="e.g. National Treasure / මංගල හස්තිරාජයා"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Other Aliases */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-bold text-zinc-700">Other Aliases / වෙනත් නම් (Comma Separated)</label>
+                  <input
+                    type="text"
+                    value={otherNamesText}
+                    onChange={(e) => setOtherNamesText(e.target.value)}
+                    placeholder="e.g. Maligawa Indiraja, Raja, Baby"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
                 </div>
               </div>
+            </div>
 
-              {/* 2. Custody & Location */}
-              <div className="space-y-4 pt-4 border-t border-zinc-100">
-                <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-emerald-700" />
-                  <span>2. භාරකාරත්වය සහ පිහිටීම (Custody & Location)</span>
-                </h3>
+            {/* Section 2: Guardianship & Physical Characteristics */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-emerald-700" />
+                <span>2. භාරකාරත්වය හා දේහ ලක්ෂණ (Guardianship & Physical Attributes)</span>
+              </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Organization / Temple (විහාරය / භාරකාර ආයතනය)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.organization}
-                      onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                      placeholder="e.g. Sri Dalada Maligawa (ශ්‍රී දළදා මාළිගාව)"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Location (නගරය / ප්‍රදේශය)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.location}
-                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      placeholder="e.g. Kandy (මහනුවර)"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Mahout (ඇත්ගොව්වාගේ නම - තොරතුරු නොමැති නම් හිස්ව තබන්න)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.mahout || ''}
-                      onChange={(e) => setFormData({ ...formData, mahout: e.target.value })}
-                      placeholder="e.g. Somapala Mahout"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Physical & Tusks */}
-              <div className="space-y-4 pt-4 border-t border-zinc-100">
-                <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Crown className="w-4 h-4 text-emerald-700" />
-                  <span>3. දළ සහ ශාරීරික ලක්ෂණ (Tusks & Physical Characteristics)</span>
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Tusks Description (දළ පිළිබඳ විස්තරය)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.tusks || ''}
-                      onChange={(e) => setFormData({ ...formData, tusks: e.target.value })}
-                      placeholder="e.g. දිගු සවිමත් යුගල දළ (Twin symmetrical ivory tusks)"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">
-                      Physical Characteristics (ශාරීරික ලක්ෂණ / උස)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.physicalCharacteristics || ''}
-                      onChange={(e) => setFormData({ ...formData, physicalCharacteristics: e.target.value })}
-                      placeholder="e.g. අඩි 9.8 ක උස, කැපී පෙනෙන කුම්භස්ථල, ගාම්භීර ගමන් විලාසය"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Organization */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">
+                    Custodian / Temple / Organization (භාරකාර විහාරය / ආයතනය)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.organization}
+                    onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
+                    placeholder="e.g. Sri Dalada Maligawa (ශ්‍රී දළදා මාළිගාව)"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">
-                    Comprehensive Story & Historical Description (ඓතිහාසික පසුබිම සහ විස්තරය)
+                {/* Location */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය / දිස්ත්‍රික්කය)</label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    placeholder="e.g. Kandy / මහනුවර"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Mahout */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Mahout / ඇත්ගොව්වා</label>
+                  <input
+                    type="text"
+                    value={formData.mahout || ''}
+                    onChange={(e) => setFormData({ ...formData, mahout: e.target.value })}
+                    placeholder="e.g. K. G. Sunil / අනුර මහතා"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Tusks Details */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-700">Tusk Characteristics (ඇත් දළ විස්තර)</label>
+                  <input
+                    type="text"
+                    value={formData.tusks || ''}
+                    onChange={(e) => setFormData({ ...formData, tusks: e.target.value })}
+                    placeholder="e.g. දිගු සවිමත් යුගල දළ (Twin symmetrical curved tusks)"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Physical Characteristics */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-bold text-zinc-700">
+                    Physical Marks & Height (ශාරීරික ලක්ෂණ සහ උස)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.physicalCharacteristics || ''}
+                    onChange={(e) => setFormData({ ...formData, physicalCharacteristics: e.target.value })}
+                    placeholder="e.g. උස අඩි 9.5, තේජවන්ත පෙනුම, පුළුල් කුම්භස්ථලය, සමමිතික පිටිකොන්ද"
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+
+                {/* Detailed Description */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-bold text-zinc-700">
+                    Comprehensive Biography & Sacred History (සම්පූර්ණ ඉතිහාසය හා පසුබිම)*
                   </label>
                   <textarea
                     rows={4}
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="අලියාගේ සම්භවය, ශ්‍රී දළදා මාළිගාවට පූජා කළ ආකාරය සහ සුවිශේෂී ඓතිහාසික තොරතුරු..."
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none leading-relaxed"
+                    placeholder="හීලෑ අලියාගේ ඓතිහාසික පසුබිම, පෙරහැර මංගල්‍යයන්හි ධාතු කරඬුව වැඩමවීම, පුදසත්කාර සහ සංස්කෘතික වටිනාකම..."
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
                   />
                 </div>
               </div>
+            </div>
 
-              {/* 4. Perahera Participation */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100">
-                <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-emerald-700" />
-                  <span>4. පෙරහැර සහභාගීත්වය (Perahera Participation)</span>
-                </h3>
+            {/* Section 3: Perahera Participation */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-emerald-700" />
+                <span>3. පෙරහැර සහභාගීත්වය (Perahera Participation Checklist)</span>
+              </h4>
 
+              {/* Quick Select Chips */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-zinc-500">ප්‍රධාන පෙරහැර ඉක්මන් තේරීම:</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {POPULAR_PERAHERAS.map((p) => {
+                    const cleanP = p.split('(')[0].trim();
+                    const isSelected = peraheraText.includes(cleanP) || peraheraText.includes(p);
+                    return (
+                      <button
+                        type="button"
+                        key={p}
+                        onClick={() => {
+                          if (isSelected) {
+                            setPeraheraText((prev) =>
+                              prev
+                                .split(',')
+                                .map((s) => s.trim())
+                                .filter((s) => !s.includes(cleanP))
+                                .join(', ')
+                            );
+                          } else {
+                            setPeraheraText((prev) => (prev ? `${prev}, ${p}` : p));
+                          }
+                        }}
+                        className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-800 text-white shadow-xs'
+                            : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '} {p}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-700">
+                  Selected Peraheras (Custom or Comma Separated)
+                </label>
                 <input
                   type="text"
                   value={peraheraText}
                   onChange={(e) => setPeraheraText(e.target.value)}
-                  placeholder="e.g. Kandy Esala Perahera, Kelaniya Duruthu Perahera (කොමා වලින් වෙන් කරන්න)"
-                  className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  placeholder="Kandy Esala Perahera, Kelaniya Duruthu Perahera..."
+                  className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
                 />
-
-                {/* Quick Add popular peraheras */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <span className="text-[11px] font-bold text-zinc-400 py-1">Quick Add:</span>
-                  {POPULAR_PERAHERAS.map((perahera, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        const current = peraheraText ? peraheraText.split(',').map((s) => s.trim()) : [];
-                        if (!current.includes(perahera)) {
-                          setPeraheraText([...current, perahera].join(', '));
-                        }
-                      }}
-                      className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg text-[11px] font-semibold border border-emerald-200 transition-colors cursor-pointer"
-                    >
-                      + {perahera.split('(')[0].trim()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 5. Photos Gallery Management (Direct Gallery Upload & URL Support) */}
-              <div className="space-y-4 pt-4 border-t border-zinc-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-emerald-700" />
-                      <span>5. ඡායාරූප සහ ගැලරිය (Photographs & Gallery)</span>
-                    </h3>
-                    <p className="text-[11px] text-zinc-500">
-                      දුරකතනයේ Gallery එකෙන් කෙලින්ම ඡායාරූප upload කරන්න හෝ Photo URL එක්කරන්න.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {/* Hidden Multi-file input for Gallery */}
-                    <input
-                      ref={galleryInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => e.target.files && handleGalleryFiles(e.target.files)}
-                    />
-                    
-                    <button
-                      type="button"
-                      disabled={isUploadingGallery}
-                      onClick={() => galleryInputRef.current?.click()}
-                      className="px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      {isUploadingGallery ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <UploadCloud className="w-3.5 h-3.5" />
-                      )}
-                      <span>ගැලරියෙන් ඡායාරූප තෝරන්න (From Gallery)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleAddPhotoField}
-                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>URL එකක් එක් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Primary Gallery Drag & Drop / Click-to-Upload Banner */}
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDraggingOverGallery(true);
-                  }}
-                  onDragLeave={() => setIsDraggingOverGallery(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDraggingOverGallery(false);
-                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                      handleGalleryFiles(e.dataTransfer.files);
-                    }
-                  }}
-                  onClick={() => galleryInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
-                    isDraggingOverGallery
-                      ? 'border-emerald-600 bg-emerald-50 scale-[1.01]'
-                      : 'border-emerald-200 bg-[#FAF9F5] hover:bg-emerald-50/40 hover:border-emerald-500'
-                  }`}
-                >
-                  {isUploadingGallery ? (
-                    <div className="flex flex-col items-center justify-center py-2 space-y-2">
-                      <Loader2 className="w-8 h-8 text-emerald-700 animate-spin" />
-                      <p className="text-xs font-bold text-emerald-900">
-                        ඡායාරූප සකසමින් පවතී... (Optimizing & Loading photos...)
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center space-y-1.5">
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                        <Camera className="w-5 h-5" />
-                      </div>
-                      <div className="font-bold text-xs text-[#062E22]">
-                        දුරකතනයේ / පරිගණකයේ Gallery එකෙන් ඡායාරූප මෙතැනට Drag & Drop කරන්න හෝ Click කරන්න
-                      </div>
-                      <p className="text-[10px] text-zinc-500">
-                        JPG, PNG, WebP (එක්වර ඡායාරූප කිහිපයක් තෝරාගත හැක / Multiple photos supported)
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Photos List & Controls */}
-                <div className="space-y-3">
-                  {formData.photos.map((photo, idx) => {
-                    const isMainCover = idx === 0;
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-3 rounded-2xl border transition-all ${
-                          isMainCover
-                            ? 'bg-amber-50/60 border-amber-300 shadow-2xs'
-                            : 'bg-[#FAF9F5] border-zinc-200'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                          {/* Image preview & badges */}
-                          <div className="flex items-center gap-3 w-full sm:w-auto">
-                            <div className="relative w-14 h-14 rounded-xl bg-zinc-200 border border-zinc-300 overflow-hidden flex-shrink-0 shadow-inner">
-                              {photo ? (
-                                <img src={photo} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                <ImageIcon className="w-5 h-5 text-zinc-400 m-auto mt-4" />
-                              )}
-                              {isMainCover && (
-                                <div className="absolute top-0 left-0 bg-amber-400 text-zinc-950 p-0.5 rounded-br-lg shadow-sm">
-                                  <Crown className="w-3 h-3" />
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-xs text-[#062E22]">
-                                  Photo #{idx + 1}
-                                </span>
-                                {isMainCover ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-300 text-amber-950 border border-amber-400">
-                                    ★ Cover Photo (ප්‍රධාන ඡායාරූපය)
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSetMainPhoto(idx)}
-                                    className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer flex items-center gap-0.5"
-                                  >
-                                    <Crown className="w-3 h-3 text-amber-500" />
-                                    <span>ප්‍රධාන ඡායාරූපය කරන්න</span>
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-2 mt-1">
-                                {/* Single photo gallery file picker */}
-                                <label className="px-2.5 py-1 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-[10px] font-bold text-zinc-700 cursor-pointer flex items-center gap-1 shadow-2xs">
-                                  <Camera className="w-3 h-3 text-emerald-700" />
-                                  <span>{photo ? 'ගැලරියෙන් මාරු කරන්න' : 'Gallery එකෙන් තෝරන්න'}</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleSinglePhotoFile(idx, file);
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* URL text input & delete button */}
-                          <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-md">
-                            <input
-                              type="text"
-                              value={photo}
-                              onChange={(e) => handleUpdatePhotoField(idx, e.target.value)}
-                              placeholder="Image URL හෝ Base64 Data..."
-                              className="flex-1 px-3 py-1.5 bg-white border border-zinc-300 rounded-xl text-[11px] text-[#062E22] focus:ring-2 focus:ring-emerald-700 focus:outline-none font-mono"
-                            />
-                            {formData.photos.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemovePhotoField(idx)}
-                                className="p-2 text-red-600 hover:bg-red-100 rounded-xl transition-colors cursor-pointer shrink-0"
-                                title="Delete photo"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Preset Authentic Sri Lankan Elephant Photos Pickers */}
-                <div className="pt-2 bg-[#FAF9F5] p-3 rounded-2xl border border-zinc-200/80">
-                  <span className="text-[11px] font-bold text-zinc-600 block mb-1.5 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>හෝ සත්‍යාපිත පෙරහැර ඡායාරූප එකතුවෙන් තෝරන්න (Preset Photo Library):</span>
-                  </span>
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {PRESET_ELEPHANT_PHOTOS.map((preset, i) => (
-                      <div
-                        key={i}
-                        onClick={() => {
-                          if (!formData.photos.includes(preset)) {
-                            setFormData({ ...formData, photos: [preset, ...formData.photos.filter(Boolean)] });
-                            showToast('Preset photo added!');
-                          }
-                        }}
-                        className="relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-600 transition-all group shadow-2xs"
-                      >
-                        <img src={preset} alt="" className="w-full h-full object-cover group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white text-[10px] font-bold">
-                          + Use
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 6. Admin Control Toggles (Verification, Featured, LIVE) */}
-              <div className="space-y-4 pt-4 border-t border-zinc-100">
-                <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                  <span>6. පාලන ලාංඡන (Administrative Badges & Spotlight)</span>
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Verified Toggle */}
-                  <label className="flex items-center gap-3 p-3.5 bg-[#FAF9F5] rounded-2xl border border-zinc-200 cursor-pointer hover:border-emerald-500 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.verified}
-                      onChange={(e) => setFormData({ ...formData, verified: e.target.checked })}
-                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
-                    />
-                    <div>
-                      <div className="font-bold text-xs text-[#062E22] flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Verified Badge (සත්‍යාපිත ලාංඡනය)</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500">Show blue/green official verification mark</p>
-                    </div>
-                  </label>
-
-                  {/* Featured Story Toggle */}
-                  <label className="flex items-center gap-3 p-3.5 bg-[#FAF9F5] rounded-2xl border border-zinc-200 cursor-pointer hover:border-purple-500 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.isFeatured}
-                      onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                    />
-                    <div>
-                      <div className="font-bold text-xs text-[#062E22] flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Featured in Stories (විශේෂාංග කතාවක්)</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500">Pin to top horizontal carousel on Discover</p>
-                    </div>
-                  </label>
-
-                  {/* LIVE Status Toggle */}
-                  <label className="flex items-center gap-3 p-3.5 bg-[#FAF9F5] rounded-2xl border border-zinc-200 cursor-pointer hover:border-red-500 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.isLive}
-                      onChange={(e) => setFormData({ ...formData, isLive: e.target.checked })}
-                      className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
-                    />
-                    <div>
-                      <div className="font-bold text-xs text-[#062E22] flex items-center gap-1">
-                        <Radio className="w-3.5 h-3.5 text-red-600" />
-                        <span>LIVE Status Badge (සජීවී ලාංඡනය)</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500">Show animated pulsing LIVE mark</p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* 7. Verified Sources */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider">
-                    7. සත්‍යාපිත මූලාශ්‍ර (Verifiable Sources)
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={handleAddSource}
-                    className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Source</span>
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {formData.sources.map((src, idx) => (
-                    <div key={idx} className="p-3.5 bg-[#FAF9F5] rounded-2xl border border-zinc-200 space-y-2">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input
-                          type="text"
-                          value={src.title}
-                          onChange={(e) => handleUpdateSource(idx, 'title', e.target.value)}
-                          placeholder="Source Title (e.g. Maligawa Registry)"
-                          className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs"
-                        />
-                        <input
-                          type="text"
-                          value={src.publisher || ''}
-                          onChange={(e) => handleUpdateSource(idx, 'publisher', e.target.value)}
-                          placeholder="Publisher / Authority"
-                          className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs"
-                        />
-                        <input
-                          type="url"
-                          value={src.url || ''}
-                          onChange={(e) => handleUpdateSource(idx, 'url', e.target.value)}
-                          placeholder="Reference URL (Optional)"
-                          className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-mono"
-                        />
-                      </div>
-                      {formData.sources.length > 1 && (
-                        <div className="text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSource(idx)}
-                            className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
-                          >
-                            Remove Source
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Bottom Action Submit Button */}
-              <div className="pt-6 border-t border-zinc-200 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAdminTab('elephants')}
-                  className="px-6 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-8 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-emerald-950/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{isSaving ? 'Saving to Database...' : 'Save Elephant Profile (සුරකින්න)'}</span>
-                </button>
               </div>
             </div>
-          </form>
-        )}
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 3: Cultural & Perahera Events Manager */}
-        {/* ------------------------------------------------------------- */}
-        {adminTab === 'events' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left: Events List */}
-            <div className="lg:col-span-2 space-y-4">
+            {/* Section 4: Photo Gallery & Mobile Compressed Uploader */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-emerald-700" />
+                    <span>4. ඡායාරූප ගැලරිය (Photo Gallery & Mobile Upload)</span>
+                  </h4>
+                  <p className="text-[11px] text-zinc-500">
+                    උපාංගයේ ඇති ඕනෑම ඡායාරූපයක් හෝ Image URLs එක් කරන්න.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files && handleGalleryFiles(e.target.files)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={isUploadingGallery}
+                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isUploadingGallery ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="w-3.5 h-3.5" />
+                    )}
+                    <span>Upload from Phone / PC</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddPhotoField}
+                    className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    + Add URL
+                  </button>
+                </div>
+              </div>
+
+              {/* Photo Thumbnails List */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
+                {formData.photos.map((photoUrl, idx) => (
+                  <div
+                    key={idx}
+                    className="relative group bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 aspect-square shadow-2xs"
+                  >
+                    {photoUrl ? (
+                      <img
+                        src={photoUrl}
+                        alt={`Elephant ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 p-2 text-center text-[10px]">
+                        <ImageIcon className="w-5 h-5 mb-1" />
+                        <span>No image</span>
+                      </div>
+                    )}
+
+                    {/* Main Cover Badge */}
+                    {idx === 0 && (
+                      <span className="absolute top-2 left-2 bg-emerald-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
+                        COVER PHOTO
+                      </span>
+                    )}
+
+                    {/* Actions Overlay */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
+                      {idx !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetMainPhoto(idx)}
+                          className="px-2 py-1 bg-white text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-emerald-50 cursor-pointer"
+                        >
+                          Make Cover
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhotoField(idx)}
+                        className="p-1.5 bg-red-600 text-white rounded-lg text-xs shadow-md hover:bg-red-700 cursor-pointer"
+                        title="Remove photo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Section 5: Sources & Verified Documentation */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-extrabold text-[#062E22]">
-                  Active Cultural Events & Perahera Notices ({events.length})
-                </h3>
+                <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-emerald-700" />
+                  <span>5. මූලාශ්‍ර සහ ලේඛන (Sources & References)</span>
+                </h4>
                 <button
-                  onClick={handleOpenCreateEvent}
-                  className="px-3 py-1.5 bg-[#062E22] text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  type="button"
+                  onClick={handleAddSource}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ New Event</span>
+                  + Add Source Reference
                 </button>
               </div>
 
               <div className="space-y-3">
-                {events.map((ev) => (
+                {formData.sources.map((src, idx) => (
                   <div
-                    key={ev.id || ev.title}
-                    className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs space-y-2"
+                    key={idx}
+                    className="p-3 bg-[#FAF9F5] rounded-2xl border border-zinc-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-extrabold text-sm text-[#062E22]">{ev.title}</h4>
-                        {ev.sinhalaTitle && (
-                          <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      placeholder="Source Title (e.g. Wildlife Dept Registry)"
+                      value={src.title}
+                      onChange={(e) => handleUpdateSource(idx, 'title', e.target.value)}
+                      className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Publisher / Official Custodian"
+                      value={src.publisher || ''}
+                      onChange={(e) => handleUpdateSource(idx, 'publisher', e.target.value)}
+                      className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Year / Verified Date (e.g. 2024)"
+                        value={src.verifiedDate || ''}
+                        onChange={(e) => handleUpdateSource(idx, 'verifiedDate', e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      />
+                      {formData.sources.length > 1 && (
                         <button
-                          onClick={() => handleOpenEditEvent(ev)}
-                          className="p-1.5 text-zinc-500 hover:text-emerald-700 rounded-lg hover:bg-zinc-100 cursor-pointer"
+                          type="button"
+                          onClick={() => handleRemoveSource(idx)}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
-                        {ev.id && (
-                          <button
-                            onClick={() => onDeleteEvent(ev.id!)}
-                            className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-zinc-100 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-zinc-600 leading-relaxed">{ev.description}</p>
-
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 pt-1 border-t border-zinc-100">
-                      <span>📍 {ev.location}</span>
-                      <span>🗓️ {ev.date}</span>
-                      {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                        <span>🐘 {ev.participatingElephants.join(', ')}</span>
                       )}
                     </div>
                   </div>
@@ -1825,195 +2039,458 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Right: Add/Edit Event Form */}
-            <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider">
-                {editingEventId ? 'Edit Event' : 'Add Cultural Event / Notice'}
-              </h3>
+            {/* Sticky Mobile / Desktop Action Bar */}
+            <div className="sticky bottom-4 z-30 bg-[#062E22] text-white p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 border border-emerald-500/30 animate-fadeIn">
+              <div className="text-xs font-bold truncate">
+                {editingId ? `සංස්කරණය: ${formData.name}` : 'නව අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('elephants')}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  <span>{editingId ? 'යාවත්කාලීන කරන්න' : 'සුරකින්න (Save)'}</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
 
-              <form onSubmit={handleSubmitEvent} className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Event Title *</label>
-                  <input
-                    type="text"
-                    value={eventFormData.title}
-                    onChange={(e) => setEventFormData({ ...eventFormData, title: e.target.value })}
-                    placeholder="e.g. Kandy Esala Perahera"
-                    required
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl"
-                  />
-                </div>
+        {/* ============================================================= */}
+        {/* CATEGORY 4: COMMUNITY POSTS & STORIES MODERATION               */}
+        {/* ============================================================= */}
+        {adminTab === 'posts' && (
+          <div className="space-y-4 animate-fadeIn">
+            {/* Header & Controls */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={postsSearch}
+                  onChange={(e) => setPostsSearch(e.target.value)}
+                  placeholder="අලියාගේ නම, පරිශීලකයා සොයන්න..."
+                  className="w-full pl-9 pr-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Sinhala Title</label>
-                  <input
-                    type="text"
-                    value={eventFormData.sinhalaTitle || ''}
-                    onChange={(e) => setEventFormData({ ...eventFormData, sinhalaTitle: e.target.value })}
-                    placeholder="e.g. මහනුවර ඇසළ මහා පෙරහැර"
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl font-sinhala"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Date / Month</label>
-                  <input
-                    type="text"
-                    value={eventFormData.date}
-                    onChange={(e) => setEventFormData({ ...eventFormData, date: e.target.value })}
-                    placeholder="e.g. August 2025"
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Location</label>
-                  <input
-                    type="text"
-                    value={eventFormData.location}
-                    onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
-                    placeholder="e.g. Kandy"
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Participating Tuskers (Comma separated)</label>
-                  <input
-                    type="text"
-                    value={eventElephantsText}
-                    onChange={(e) => setEventElephantsText(e.target.value)}
-                    placeholder="e.g. Indiraja, Myan Kumara, Vasana"
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Description</label>
-                  <textarea
-                    rows={3}
-                    value={eventFormData.description}
-                    onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
-                    placeholder="Event details..."
-                    className="w-full px-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl"
-                  />
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setPostFilter('all')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      postFilter === 'all' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                    }`}
+                  >
+                    All ({communityPosts.length})
+                  </button>
+                  <button
+                    onClick={() => setPostFilter('stories')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      postFilter === 'stories' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                    }`}
+                  >
+                    Stories Only
+                  </button>
+                  <button
+                    onClick={() => setPostFilter('feed')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      postFilter === 'feed' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                    }`}
+                  >
+                    Feed Posts
+                  </button>
                 </div>
 
                 <button
-                  type="submit"
-                  className="w-full py-2.5 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-sm"
+                  onClick={loadCommunityPosts}
+                  disabled={isLoadingPosts}
+                  className="p-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-zinc-700"
+                  title="Refresh Posts"
                 >
-                  {editingEventId ? 'Update Notice' : 'Publish Event Notice'}
+                  <RefreshCw className={`w-4 h-4 ${isLoadingPosts ? 'animate-spin' : ''}`} />
                 </button>
+              </div>
+            </div>
+
+            {/* Posts Grid */}
+            {isLoadingPosts ? (
+              <div className="p-12 text-center text-zinc-400 flex flex-col items-center justify-center gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-700" />
+                <span className="text-xs font-medium">පරිශීලක පළකිරීම් load වෙමින් පවතී...</span>
+              </div>
+            ) : filteredCommunityPosts.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center border border-zinc-200 text-zinc-400 text-xs">
+                පළකිරීම් කිසිවක් හමු නොවීය.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredCommunityPosts.map((post) => (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-2xl overflow-hidden border border-zinc-200 shadow-2xs flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Photo Thumbnail */}
+                      <div className="relative aspect-4/3 bg-zinc-100 overflow-hidden">
+                        <img
+                          src={post.photoUrl}
+                          alt={post.elephantName}
+                          className="w-full h-full object-cover"
+                        />
+                        {post.isStoryOnly ? (
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-purple-900/90 text-purple-200 backdrop-blur-xs">
+                            STORY ONLY
+                          </span>
+                        ) : post.isStory ? (
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-900/90 text-emerald-200 backdrop-blur-xs">
+                            FEED + STORY
+                          </span>
+                        ) : (
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-zinc-900/90 text-zinc-200 backdrop-blur-xs">
+                            FEED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-3.5 space-y-2">
+                        {/* Target Elephant */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-emerald-800 flex items-center gap-1">
+                            <Crown className="w-3.5 h-3.5 text-amber-500" />
+                            <span>{post.elephantName}</span>
+                          </span>
+                          <span className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            <Heart className="w-3 h-3 text-red-500 fill-red-500" />
+                            <span>{post.likesCount || 0}</span>
+                          </span>
+                        </div>
+
+                        {/* Caption */}
+                        {post.caption && (
+                          <p className="text-xs text-zinc-700 line-clamp-2">
+                            "{post.caption}"
+                          </p>
+                        )}
+
+                        {/* Author Info */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                          <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden">
+                            {post.authorPhotoURL ? (
+                              <img
+                                src={post.authorPhotoURL}
+                                alt={post.authorName}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <User className="w-full h-full p-1 text-zinc-500" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px] font-bold text-zinc-800 truncate">
+                              {post.authorName}
+                            </div>
+                            <div className="text-[10px] text-zinc-400 font-mono truncate">
+                              {post.authorUsername}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Delete Action Footer */}
+                    <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                      <span className="text-[10px] text-zinc-400">Post ID: {post.id?.slice(0, 8)}...</span>
+                      <button
+                        onClick={() => post.id && handleDeletePost(post.id)}
+                        className="px-3 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================= */}
+        {/* CATEGORY 5: CULTURAL & PERAHERA EVENTS                         */}
+        {/* ============================================================= */}
+        {adminTab === 'events' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Event Form */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-emerald-700" />
+                <span>
+                  {editingEventId ? 'පෙරහැර නිවේදනය සංස්කරණය' : 'නව පෙරහැර / සංස්කෘතික නිවේදනයක් පළ කිරීම'}
+                </span>
+              </h3>
+
+              <form onSubmit={handleSubmitEvent} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700">Event Title (English)*</label>
+                    <input
+                      type="text"
+                      required
+                      value={eventFormData.title}
+                      onChange={(e) => setEventFormData({ ...eventFormData, title: e.target.value })}
+                      placeholder="e.g. Kandy Esala Perahera 2025"
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700">Sinhala Title (සිංහල නම)</label>
+                    <input
+                      type="text"
+                      value={eventFormData.sinhalaTitle || ''}
+                      onChange={(e) => setEventFormData({ ...eventFormData, sinhalaTitle: e.target.value })}
+                      placeholder="e.g. මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය"
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none font-sinhala"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය)</label>
+                    <input
+                      type="text"
+                      value={eventFormData.location}
+                      onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
+                      placeholder="e.g. Kandy / මහනුවර"
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700">Date & Schedule (දිනය)</label>
+                    <input
+                      type="text"
+                      value={eventFormData.date}
+                      onChange={(e) => setEventFormData({ ...eventFormData, date: e.target.value })}
+                      placeholder="e.g. August 10 - 20, 2025"
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-bold text-zinc-700">
+                      Participating Elephants (සහභාගී වන අලි ඇතුන් - Comma separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={eventElephantsText}
+                      onChange={(e) => setEventElephantsText(e.target.value)}
+                      placeholder="Indiraja, Myan Kumara, Vasana, Kandula..."
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-bold text-zinc-700">Description (විස්තරය)</label>
+                    <textarea
+                      rows={3}
+                      value={eventFormData.description}
+                      onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
+                      placeholder="පෙරහැර පිළිබඳ විශේෂ සටහන් සහ තොරතුරු..."
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  {editingEventId && (
+                    <button
+                      type="button"
+                      onClick={handleOpenCreateEvent}
+                      className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-bold hover:bg-zinc-200"
+                    >
+                      Clear / New
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{editingEventId ? 'යාවත්කාලීන කරන්න' : 'නිවේදනය පළ කරන්න (Publish)'}</span>
+                  </button>
+                </div>
               </form>
+            </div>
+
+            {/* Events List */}
+            <div className="space-y-3">
+              <h4 className="font-extrabold text-sm text-[#062E22]">
+                පළ කර ඇති පෙරහැර නිවේදන ({events.length})
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {events.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs space-y-3 flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h5 className="font-extrabold text-sm text-[#062E22]">{ev.title}</h5>
+                          {ev.sinhalaTitle && (
+                            <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                          )}
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-900">
+                          {ev.type}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-600 mt-2 line-clamp-2">{ev.description}</p>
+                      <div className="text-[11px] text-zinc-500 font-medium mt-2 space-y-0.5">
+                        <div>📍 {ev.location}</div>
+                        <div>📅 {ev.date}</div>
+                        {ev.participatingElephants && ev.participatingElephants.length > 0 && (
+                          <div className="text-emerald-700 font-semibold truncate">
+                            🐘 {ev.participatingElephants.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+                      <button
+                        onClick={() => handleOpenEditEvent(ev)}
+                        className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => ev.id && onDeleteEvent(ev.id)}
+                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB: Bulk Import Elephants via Excel / CSV                    */}
-        {/* ------------------------------------------------------------- */}
+        {/* ============================================================= */}
+        {/* CATEGORY 6: BULK IMPORT (EXCEL / CSV)                          */}
+        {/* ============================================================= */}
         {adminTab === 'bulk_import' && (
-          <BulkImportElephants
-            existingElephants={elephants}
-            onSaveElephant={onSaveElephant}
-            language={language}
-            onFinished={() => {
-              setAdminTab('elephants');
-              showToast('තොග දත්ත ඇතුළත් කිරීම සාර්ථකව අවසන් විය!');
-            }}
-          />
+          <div className="animate-fadeIn">
+            <BulkImportElephants
+              onSaveElephant={onSaveElephant}
+              existingElephants={elephants}
+              language={language}
+              onFinished={async () => {
+                showToast('Bulk import finished successfully!');
+                setAdminTab('elephants');
+              }}
+            />
+          </div>
         )}
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 4: Database & System Tools */}
-        {/* ------------------------------------------------------------- */}
+        {/* ============================================================= */}
+        {/* CATEGORY 7: DATABASE TOOLS & BACKUPS                           */}
+        {/* ============================================================= */}
         {adminTab === 'database' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Re-seed verified data */}
-            <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-bold">
-                  <Database className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-[#062E22]">
-                    Re-Seed Official Sri Lankan Elephant Registry
-                  </h3>
-                  <p className="text-xs text-zinc-500">
-                    Indiraja, Myan Kumara, Vasana, Kandula, Nadungamuwa Raja, etc.
-                  </p>
-                </div>
-              </div>
-
-              <p className="text-xs text-zinc-600 leading-relaxed">
-                මෙම බොත්තම ක්ලික් කිරීමෙන් නිල රාජ්‍ය සහ විහාර ලේඛනාගාර සත්‍යාපිත හීලෑ අලි සහ ඇතුන්ගේ මුල් වාර්තා නැවත Database එකට ඇතුළත් කෙරේ.
+          <div className="space-y-6 animate-fadeIn">
+            {/* Backup Cards */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-700" />
+                <span>දත්ත ගොනු උපස්ථ කිරීම (Export Full Database)</span>
+              </h3>
+              <p className="text-xs text-zinc-500 font-medium">
+                Cloud Firestore හි ඇති සියලුම හීලෑ අලි ඇතුන්ගේ තොරතුරු JSON, Excel හෝ CSV ආකාරයෙන් බාගත කරගන්න.
               </p>
 
-              <button
-                onClick={async () => {
-                  if (confirm('සත්‍යාපිත මුල් වාර්තා නැවත පූරණය කිරීමට අවශ්‍යද?')) {
-                    setIsSeeding(true);
-                    await onSeedDatabase();
-                    setIsSeeding(false);
-                    showToast('මූලික දත්ත සාර්ථකව පූරණය විය!');
-                  }
-                }}
-                disabled={isSeeding}
-                className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
-                <span>{isSeeding ? 'Seeding Verified Records...' : 'Seed Official Verified Elephants'}</span>
-              </button>
-            </div>
-
-            {/* Export Backups (Excel, CSV, JSON) */}
-            <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
-                  <Download className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-[#062E22]">
-                    Export Registry Data & Backups
-                  </h3>
-                  <p className="text-xs text-zinc-500">Download snapshot of all elephant profiles ({elephants.length} Records)</p>
-                </div>
-              </div>
-
-              <p className="text-xs text-zinc-600 leading-relaxed">
-                වෙබ් අඩවියේ ඇති සියලුම හීලෑ අලි වාර්තා Excel, CSV හෝ JSON ගොනුවක් ලෙස ඔබගේ පරිගණකයට බාගත කර සුරක්ෂිතව තබා ගන්න.
-              </p>
-
-              <div className="space-y-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <button
                   onClick={handleExportExcel}
-                  className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                  className="p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-950 text-left transition-all cursor-pointer space-y-1 group"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
-                  <span>Export to Excel Spreadsheet (.xlsx)</span>
+                  <div className="flex items-center justify-between">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+                    <Download className="w-4 h-4 text-emerald-700 group-hover:translate-y-0.5 transition-transform" />
+                  </div>
+                  <div className="font-extrabold text-sm mt-2">Export Excel (.xlsx)</div>
+                  <div className="text-[11px] text-emerald-800">Microsoft Excel Spreadsheet</div>
                 </button>
 
                 <button
                   onClick={handleExportCSV}
-                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                  className="p-4 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-950 text-left transition-all cursor-pointer space-y-1 group"
                 >
-                  <Download className="w-4 h-4 text-amber-300" />
-                  <span>Export to CSV File (.csv)</span>
+                  <div className="flex items-center justify-between">
+                    <FileText className="w-5 h-5 text-blue-700" />
+                    <Download className="w-4 h-4 text-blue-700 group-hover:translate-y-0.5 transition-transform" />
+                  </div>
+                  <div className="font-extrabold text-sm mt-2">Export CSV (.csv)</div>
+                  <div className="text-[11px] text-blue-800">Comma-Separated Values Data</div>
                 </button>
 
                 <button
                   onClick={handleExportJSON}
-                  className="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  className="p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-950 text-left transition-all cursor-pointer space-y-1 group"
                 >
-                  <Download className="w-4 h-4 text-zinc-500" />
-                  <span>Export JSON Backup (.json)</span>
+                  <div className="flex items-center justify-between">
+                    <Database className="w-5 h-5 text-amber-700" />
+                    <Download className="w-4 h-4 text-amber-700 group-hover:translate-y-0.5 transition-transform" />
+                  </div>
+                  <div className="font-extrabold text-sm mt-2">Export JSON Backup</div>
+                  <div className="text-[11px] text-amber-800">Raw JSON Structure Format</div>
                 </button>
               </div>
             </div>
+
+            {/* Seed Verified Data */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <span>සත්‍යාපිත මූලික දත්ත ඇතුළත් කිරීම (Seed Verified Elephants)</span>
+              </h3>
+              <p className="text-xs text-zinc-500 font-medium">
+                ශ්‍රී ලංකාවේ ප්‍රමුඛ දළ ඇතුන් (ඉන්දිරාජා, මියන් කුමාර, වාසනා, කණ්ඩුල ඇතුළු) සත්‍යාපිත දත්ත ගොනුව ක්ෂණිකව Firestore වෙත seed කරන්න.
+              </p>
+
+              <button
+                onClick={async () => {
+                  if (confirm('සත්‍යාපිත මූලික දත්ත Database එකට එක් කිරීමට ඔබට අවශ්‍යද?')) {
+                    setIsSeeding(true);
+                    await onSeedDatabase();
+                    setIsSeeding(false);
+                    showToast('මූලික දත්ත සාර්ථකව Firestore වෙත ඇතුළත් කෙරිණි!');
+                  }
+                }}
+                disabled={isSeeding}
+                className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
+              >
+                {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                <span>{isSeeding ? 'දත්ත Seed වෙමින් පවතී...' : 'Seed Verified Elephant Registry'}</span>
+              </button>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

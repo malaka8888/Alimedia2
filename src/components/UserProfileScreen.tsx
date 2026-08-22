@@ -364,6 +364,38 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Quick App Settings (Dark / Light Theme & Language switch) */}
+        <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+          {onToggleDarkMode && (
+            <button
+              onClick={onToggleDarkMode}
+              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-zinc-700"
+            >
+              {darkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{language === 'si' ? 'Light Mode' : 'Light Mode'}</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>{language === 'si' ? 'Dark Mode' : 'Dark Mode'}</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {onToggleLanguage && (
+            <button
+              onClick={onToggleLanguage}
+              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-zinc-700"
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{language === 'si' ? 'Switch to English' : 'සිංහලට මාරු වන්න'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs: Followed Elephants & Suggestions */}

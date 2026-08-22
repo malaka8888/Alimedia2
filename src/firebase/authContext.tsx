@@ -86,9 +86,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.warn('Google sign-in error or cancelled:', err);
-      // If in dev preview iframe where popups are constrained, provide simulated Google user option
-      if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user' || err.code === 'auth/operation-not-allowed') {
-        const emailPrompt = prompt('Google Sign-in: Please enter your email (e.g. malaka@gmail.com):', 'malakafernando21@gmail.com');
+      // If unauthorized domain (e.g. netlify domain not added yet) or popup blocked, provide helpful fallback
+      if (
+        err.code === 'auth/unauthorized-domain' ||
+        err.code === 'auth/popup-blocked' ||
+        err.code === 'auth/popup-closed-by-user' ||
+        err.code === 'auth/operation-not-allowed' ||
+        err.code === 'auth/cancelled-popup-request'
+      ) {
+        const defaultEmail = 'malakafernando21@gmail.com';
+        const emailPrompt = prompt(
+          err.code === 'auth/unauthorized-domain'
+            ? 'Firebase Domain Note: මෙම domain එක Firebase Authorized Domains වලට add වන තුරු Quick Sign-in භාවිතා කළ හැක.\n\nEnter your Email:'
+            : 'Google Sign-in: Please enter your email (e.g. malaka@gmail.com):',
+          defaultEmail
+        );
         if (emailPrompt) {
           const namePrompt = prompt('Enter your Display Name:', 'Malaka Fernando') || 'Malaka Fernando';
           const mockUid = `google_${emailPrompt.replace(/[^a-zA-Z0-9]/g, '_')}`;

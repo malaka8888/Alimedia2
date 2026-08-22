@@ -8,7 +8,9 @@ import {
   deleteDoc,
   serverTimestamp,
   query,
-  orderBy
+  orderBy,
+  where,
+  arrayRemove
 } from 'firebase/firestore';
 import { db } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
@@ -16,6 +18,8 @@ import { INITIAL_VERIFIED_ELEPHANTS } from '../data/initialVerifiedData';
 
 const ELEPHANTS_COLLECTION = 'elephants';
 const EVENTS_COLLECTION = 'cultural_events';
+const POSTS_COLLECTION = 'elephant_posts';
+const USERS_COLLECTION = 'users';
 
 /**
  * Initial default cultural events / perahera updates
@@ -214,6 +218,139 @@ export async function deleteElephant(id: string): Promise<void> {
     await deleteDoc(docRef);
   } catch (error) {
     console.error(`Error deleting elephant ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Permanently delete an elephant and CASCADE delete all connected data:
+ * 1. Delete all community posts and stories associated with this elephant from `elephant_posts`
+ * 2. Remove this elephant ID from all users' `followedElephants` lists in `users`
+ * 3. Remove this elephant from any `cultural_events` participation lists
+ * 4. Delete the elephant document itself from `elephants`
+ */
+export async function deleteElephantCascade(elephantId: string): Promise<{
+  deletedElephantName: string;
+  postsDeleted: number;
+  usersUpdated: number;
+  eventsUpdated: number;
+}> {
+  try {
+    // 1. Fetch elephant document to retrieve names for reference matching
+    const elephantRef = doc(db, ELEPHANTS_COLLECTION, elephantId);
+    const elephantSnap = await getDoc(elephantRef);
+    const elephantData = elephantSnap.exists() ? elephantSnap.data() : null;
+    const elephantName = elephantData?.name || '';
+    const elephantSinhalaName = elephantData?.sinhalaName || '';
+
+    // 2. Cascade delete all community posts and stories for this elephant
+    let postsDeletedCount = 0;
+    const deletedPostIds = new Set<string>();
+    const deletePostPromises: Promise<void>[] = [];
+
+    try {
+      const postsCol = collection(db, POSTS_COLLECTION);
+      
+      // Find by elephantId
+      const postsQueryById = query(postsCol, where('elephantId', '==', elephantId));
+      const postsSnapById = await getDocs(postsQueryById);
+      postsSnapById.forEach((postDoc) => {
+        deletedPostIds.add(postDoc.id);
+        deletePostPromises.push(deleteDoc(postDoc.ref));
+        postsDeletedCount++;
+      });
+
+      // Also check by elephant name in case of legacy records
+      if (elephantName) {
+        const postsQueryByName = query(postsCol, where('elephantName', '==', elephantName));
+        const postsSnapByName = await getDocs(postsQueryByName);
+        postsSnapByName.forEach((postDoc) => {
+          if (!deletedPostIds.has(postDoc.id)) {
+            deletedPostIds.add(postDoc.id);
+            deletePostPromises.push(deleteDoc(postDoc.ref));
+            postsDeletedCount++;
+          }
+        });
+      }
+
+      await Promise.all(deletePostPromises);
+    } catch (postErr) {
+      console.warn('Could not clean up some elephant posts:', postErr);
+    }
+
+    // 3. Clean up user followedElephants arrays
+    let usersUpdatedCount = 0;
+    try {
+      const usersCol = collection(db, USERS_COLLECTION);
+      const usersQuery = query(usersCol, where('followedElephants', 'array-contains', elephantId));
+      const usersSnap = await getDocs(usersQuery);
+      const userUpdates: Promise<void>[] = [];
+
+      usersSnap.forEach((userDoc) => {
+        usersUpdatedCount++;
+        userUpdates.push(
+          updateDoc(userDoc.ref, {
+            followedElephants: arrayRemove(elephantId),
+            updatedAt: serverTimestamp(),
+          })
+        );
+      });
+
+      await Promise.all(userUpdates);
+    } catch (userErr) {
+      console.warn('Could not clean up user follows:', userErr);
+    }
+
+    // 4. Clean up cultural events participation lists
+    let eventsUpdatedCount = 0;
+    try {
+      const eventsCol = collection(db, EVENTS_COLLECTION);
+      const eventsSnap = await getDocs(eventsCol);
+      const eventUpdates: Promise<void>[] = [];
+
+      eventsSnap.forEach((eventDoc) => {
+        const evData = eventDoc.data();
+        const participating: string[] = Array.isArray(evData.participatingElephants) ? evData.participatingElephants : [];
+        const hasReference = participating.some(
+          (p) =>
+            p === elephantId ||
+            (elephantName && p.toLowerCase().includes(elephantName.toLowerCase())) ||
+            (elephantSinhalaName && p.includes(elephantSinhalaName))
+        );
+
+        if (hasReference) {
+          eventsUpdatedCount++;
+          const filtered = participating.filter(
+            (p) =>
+              p !== elephantId &&
+              (!elephantName || !p.toLowerCase().includes(elephantName.toLowerCase())) &&
+              (!elephantSinhalaName || !p.includes(elephantSinhalaName))
+          );
+          eventUpdates.push(
+            updateDoc(eventDoc.ref, {
+              participatingElephants: filtered,
+              updatedAt: serverTimestamp(),
+            })
+          );
+        }
+      });
+
+      await Promise.all(eventUpdates);
+    } catch (eventErr) {
+      console.warn('Could not clean up cultural events references:', eventErr);
+    }
+
+    // 5. Delete the main elephant document from Firestore
+    await deleteDoc(elephantRef);
+
+    return {
+      deletedElephantName: elephantName || elephantId,
+      postsDeleted: postsDeletedCount,
+      usersUpdated: usersUpdatedCount,
+      eventsUpdated: eventsUpdatedCount,
+    };
+  } catch (error) {
+    console.error(`Error executing cascade delete for elephant ${elephantId}:`, error);
     throw error;
   }
 }

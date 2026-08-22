@@ -5,6 +5,7 @@ import {
   addElephant,
   updateElephant,
   deleteElephant,
+  deleteElephantCascade,
   toggleElephantVerification,
   toggleElephantFeatured,
   toggleElephantLive,
@@ -260,13 +261,24 @@ export default function App() {
   };
 
   const handleDeleteElephant = async (id: string) => {
-    await deleteElephant(id);
-    showNotification('වාර්තාව සාර්ථකව ඉවත් කෙරිණි.');
+    const result = await deleteElephantCascade(id);
+    showNotification(
+      language === 'si'
+        ? `${result.deletedElephantName} සහ සම්බන්ධිත සියලු දත්ත (${result.postsDeleted} posts) සම්පූර්ණයෙන්ම ඉවත් කෙරිණි.`
+        : `${result.deletedElephantName} and all connected data (${result.postsDeleted} posts) permanently removed.`
+    );
     if (selectedElephant?.id === id) {
       setSelectedElephant(null);
     }
-    const fresh = await getElephants();
-    setElephants(fresh);
+    const [freshElephants, freshPosts, freshEvents] = await Promise.all([
+      getElephants(),
+      getAllElephantPosts(),
+      getCulturalEvents()
+    ]);
+    setElephants(freshElephants);
+    setPosts(freshPosts);
+    setEvents(freshEvents);
+    return result;
   };
 
   const handleToggleVerification = async (id: string, verified: boolean) => {
@@ -408,6 +420,9 @@ export default function App() {
             language={language}
             onSelectElephant={handleSelectElephant}
             onOpenDirectory={() => handleTabChange('elephant')}
+            darkMode={darkMode}
+            onToggleDarkMode={toggleDarkMode}
+            onToggleLanguage={toggleLanguage}
           />
         ) : currentTab === 'notifications' ? (
           /* Notifications Tab: Real Cultural Calendar & Perahera Updates */
