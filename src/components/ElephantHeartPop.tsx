@@ -5,12 +5,12 @@ interface ElephantHeartPopProps {
   position?: { x: number; y: number } | null;
 }
 
-const ALIMEDIA_LIKE_HEART_IMAGE = 'https://i.ibb.co/mV3b5VnH/alimedia-like-heart.png';
+// User provided clean cut-out heart with dark green elephant
+const ALIMEDIA_LIKE_HEART_IMAGE = 'https://i.ibb.co/fVWNy9ZN/1000131158-removebg-preview.png';
 
 /**
  * AliMedia Instagram-style Double-Tap Like Animation
- * Uses the exact heart with dark-green elephant icon:
- * https://i.ibb.co/mV3b5VnH/alimedia-like-heart.png
+ * Uses: https://i.ibb.co/fVWNy9ZN/1000131158-removebg-preview.png
  */
 export const ElephantHeartPop: React.FC<ElephantHeartPopProps> = ({ show, position }) => {
   if (!show) return null;
@@ -25,8 +25,8 @@ export const ElephantHeartPop: React.FC<ElephantHeartPopProps> = ({ show, positi
               top: `${position.y}px`,
               transform: 'translate(-50%, -50%)',
               position: 'absolute',
-              width: '160px',
-              height: '160px',
+              width: '180px',
+              height: '180px',
             }
           : undefined
       }
@@ -36,7 +36,7 @@ export const ElephantHeartPop: React.FC<ElephantHeartPopProps> = ({ show, positi
         <img
           src={ALIMEDIA_LIKE_HEART_IMAGE}
           alt="Like"
-          className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.35)] filter transition-all"
+          className="w-32 h-32 sm:w-40 sm:h-40 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.3)] filter transition-all"
           loading="eager"
           decoding="async"
         />

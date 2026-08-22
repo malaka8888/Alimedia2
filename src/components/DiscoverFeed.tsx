@@ -12,13 +12,14 @@ import {
   Plus,
   Play,
   UserCheck,
-  Check
+  Check,
+  Maximize2
 } from 'lucide-react';
 import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 import { StoryViewerModal, StoryItem, ElephantStoryGroup } from './StoryViewerModal';
 import { ElephantHeartPop } from './ElephantHeartPop';
-import { toggleLikeElephantPost } from '../firebase/postService';
+import { toggleLikeElephantPost, isWithin24Hours } from '../firebase/postService';
 
 interface DiscoverFeedProps {
   elephants: Elephant[];
@@ -49,6 +50,28 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   const [expandedCaptions, setExpandedCaptions] = useState<{ [id: string]: boolean }>({});
   const [heartAnims, setHeartAnims] = useState<{ [id: string]: { show: boolean; pos?: { x: number; y: number } } }>({});
   const [activeStoryGroupIndex, setActiveStoryGroupIndex] = useState<number | null>(null);
+
+  // Track timestamps when stories for each elephant were viewed by user (persisted in localStorage)
+  const [viewedTimestamps, setViewedTimestamps] = useState<{ [elephantId: string]: number }>(() => {
+    try {
+      const raw = localStorage.getItem('alimedia_viewed_story_timestamps');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleMarkStoryViewed = (elephantId: string) => {
+    if (!elephantId) return;
+    const now = Date.now();
+    setViewedTimestamps((prev) => {
+      const next = { ...prev, [elephantId]: now };
+      try {
+        localStorage.setItem('alimedia_viewed_story_timestamps', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const lastTapRef = useRef<{ [id: string]: number }>({});
 
@@ -163,8 +186,8 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   ) => {
     const now = Date.now();
     const last = lastTapRef.current[id] || 0;
-    if (now - last < 350) {
-      // Double tap detected!
+    if (now - last < 380) {
+      // Double tap detected! Like & animate heart
       handlePostDoubleClick(e, id, initialCount, isPost);
       lastTapRef.current[id] = 0;
     } else {
@@ -217,113 +240,139 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   };
 
   // -------------------------------------------------------------
-  // STORIES TRAY BUILDER (Grouped by Elephant with 3s Segments)
+  // HELPER: Extract timestamp in milliseconds
+  // -------------------------------------------------------------
+  const getStoryTimestampMs = (createdAt: any): number => {
+    if (!createdAt) return Date.now();
+    if (typeof createdAt?.toMillis === 'function') return createdAt.toMillis();
+    if (typeof createdAt?.toDate === 'function') return createdAt.toDate().getTime();
+    if (createdAt instanceof Date) return createdAt.getTime();
+    if (typeof createdAt === 'number') return createdAt;
+    if (typeof createdAt === 'string') {
+      const parsed = Date.parse(createdAt);
+      if (!isNaN(parsed)) return parsed;
+    }
+    if (createdAt?.seconds) return createdAt.seconds * 1000;
+    return Date.now();
+  };
+
+  // -------------------------------------------------------------
+  // STORIES TRAY BUILDER (Followed Elephants Only, 6s Duration,
+  // Ordered by Upload Time, Viewed Stories Move to the Back)
   // -------------------------------------------------------------
   const compiledStoryGroups: ElephantStoryGroup[] = useMemo(() => {
     const groupMap = new Map<string, ElephantStoryGroup>();
 
-    // 1. Group user-submitted community stories/posts
-    posts.forEach((post) => {
-      if (post.isStory !== false && post.photoUrl) {
-        const linked = elephants.find((e) => e.id === post.elephantId || e.name === post.elephantName);
-        const groupKey = post.elephantId || linked?.id || post.elephantName || 'general';
-        const isFollowed = (linked?.id && isFollowing(linked.id)) || (post.elephantId && isFollowing(post.elephantId));
+    // 1. Identify all elephants that the user is currently following
+    const followedElephants = elephants.filter((el) => el.id && isFollowing(el.id));
 
-        if (!groupMap.has(groupKey)) {
-          groupMap.set(groupKey, {
-            elephantId: post.elephantId || linked?.id || groupKey,
+    // 2. Gather user-submitted community stories/posts for followed elephants (within 24 hours)
+    posts.forEach((post) => {
+      if (post.isStory !== false && post.photoUrl && isWithin24Hours(post.createdAt)) {
+        const linked = elephants.find((e) => e.id === post.elephantId || e.name === post.elephantName);
+        const postElephantId = post.elephantId || linked?.id;
+        
+        // ONLY include if the user is following this elephant!
+        if (postElephantId && isFollowing(postElephantId)) {
+          const groupKey = postElephantId;
+
+          if (!groupMap.has(groupKey)) {
+            groupMap.set(groupKey, {
+              elephantId: groupKey,
+              elephantName: post.elephantName || linked?.name || 'Elephant',
+              elephantSinhalaName: post.elephantSinhalaName || linked?.sinhalaName,
+              avatarPhoto: linked?.photos?.[0] || post.photoUrl,
+              coverPhoto: post.photoUrl,
+              linkedElephant: linked,
+              isTusker: linked?.type === 'tusker',
+              isFollowed: true,
+              isLive: linked?.isLive,
+              latestStoryTimestamp: getStoryTimestampMs(post.createdAt),
+              stories: [],
+            });
+          }
+
+          const group = groupMap.get(groupKey)!;
+          const postTimestamp = getStoryTimestampMs(post.createdAt);
+          if (postTimestamp > (group.latestStoryTimestamp || 0)) {
+            group.latestStoryTimestamp = postTimestamp;
+            group.coverPhoto = post.photoUrl;
+          }
+
+          group.stories.push({
+            id: post.id || `post-story-${Math.random()}`,
+            elephantId: groupKey,
             elephantName: post.elephantName || linked?.name || 'Elephant',
             elephantSinhalaName: post.elephantSinhalaName || linked?.sinhalaName,
-            avatarPhoto: linked?.photos?.[0] || post.photoUrl,
-            coverPhoto: post.photoUrl,
+            photoUrl: post.photoUrl,
+            caption: post.caption,
+            authorName: post.authorName,
+            authorUsername: post.authorUsername,
+            authorPhotoURL: post.authorPhotoURL,
+            createdAt: post.createdAt,
             linkedElephant: linked,
+            isFollowed: true,
             isTusker: linked?.type === 'tusker',
-            isFollowed: !!isFollowed,
-            isLive: linked?.isLive,
-            stories: [],
+            likesCount: post.likesCount,
           });
         }
+      }
+    });
 
-        const group = groupMap.get(groupKey)!;
-        if (isFollowed) {
-          group.isFollowed = true;
-        }
+    // 3. For any followed elephant that doesn't have community posts yet, include its official gallery photos
+    followedElephants.forEach((el) => {
+      if (el.id && !groupMap.has(el.id) && el.photos && el.photos.length > 0) {
+        const elStories: StoryItem[] = el.photos.map((photoUrl, pIdx) => ({
+          id: `el-${el.id}-photo-${pIdx}`,
+          elephantId: el.id || '',
+          elephantName: el.name,
+          elephantSinhalaName: el.sinhalaName,
+          photoUrl: photoUrl,
+          caption: el.description,
+          authorName: 'Verified Registry',
+          authorUsername: '@official_registry',
+          authorPhotoURL: el.photos[0],
+          createdAt: el.updatedAt || el.createdAt || new Date(),
+          linkedElephant: el,
+          isFollowed: true,
+          isTusker: el.type === 'tusker',
+        }));
 
-        group.stories.push({
-          id: post.id || `post-story-${Math.random()}`,
-          elephantId: post.elephantId || linked?.id || '',
-          elephantName: post.elephantName || linked?.name || 'Elephant',
-          elephantSinhalaName: post.elephantSinhalaName || linked?.sinhalaName,
-          photoUrl: post.photoUrl,
-          caption: post.caption,
-          authorName: post.authorName,
-          authorUsername: post.authorUsername,
-          authorPhotoURL: post.authorPhotoURL,
-          createdAt: post.createdAt,
-          linkedElephant: linked,
-          isFollowed: !!isFollowed,
-          isTusker: linked?.type === 'tusker',
+        groupMap.set(el.id, {
+          elephantId: el.id,
+          elephantName: el.name,
+          elephantSinhalaName: el.sinhalaName,
+          avatarPhoto: el.photos[0],
+          coverPhoto: el.photos[0],
+          linkedElephant: el,
+          isTusker: el.type === 'tusker',
+          isFollowed: true,
+          isLive: el.isLive,
+          latestStoryTimestamp: getStoryTimestampMs(el.updatedAt || el.createdAt),
+          stories: elStories,
         });
       }
     });
 
-    // 2. Add registered elephants with gallery photos
-    elephants.forEach((el) => {
-      if (el.photos && el.photos.length > 0) {
-        const groupKey = el.id || el.name;
-        const isFollowed = el.id ? isFollowing(el.id) : false;
-
-        if (!groupMap.has(groupKey)) {
-          const elStories: StoryItem[] = el.photos.map((photoUrl, pIdx) => ({
-            id: `el-${el.id}-photo-${pIdx}`,
-            elephantId: el.id || '',
-            elephantName: el.name,
-            elephantSinhalaName: el.sinhalaName,
-            photoUrl: photoUrl,
-            caption: el.description,
-            authorName: 'National Registry',
-            authorUsername: 'verified_registry',
-            authorPhotoURL: el.photos[0],
-            createdAt: 'Official',
-            linkedElephant: el,
-            isFollowed: isFollowed,
-            isTusker: el.type === 'tusker',
-          }));
-
-          groupMap.set(groupKey, {
-            elephantId: el.id || groupKey,
-            elephantName: el.name,
-            elephantSinhalaName: el.sinhalaName,
-            avatarPhoto: el.photos[0],
-            coverPhoto: el.photos[0],
-            linkedElephant: el,
-            isTusker: el.type === 'tusker',
-            isFollowed: isFollowed,
-            isLive: el.isLive,
-            stories: elStories,
-          });
-        } else {
-          if (isFollowed) {
-            groupMap.get(groupKey)!.isFollowed = true;
-          }
-        }
-      }
-    });
-
-    // Convert map to array and sort:
-    // 1. Followed elephants FIRST
-    // 2. Live elephants
-    // 3. Elephants with most stories
+    // 4. Calculate viewed state for each group
     const groupsArray = Array.from(groupMap.values()).filter((g) => g.stories.length > 0);
-
-    return groupsArray.sort((a, b) => {
-      if (a.isFollowed && !b.isFollowed) return -1;
-      if (!a.isFollowed && b.isFollowed) return 1;
-      if (a.isLive && !b.isLive) return -1;
-      if (!a.isLive && b.isLive) return 1;
-      return b.stories.length - a.stories.length;
+    groupsArray.forEach((group) => {
+      const lastViewed = viewedTimestamps[group.elephantId] || 0;
+      const latestTs = group.latestStoryTimestamp || 0;
+      group.isViewed = lastViewed >= latestTs && lastViewed > 0;
     });
-  }, [elephants, posts, isFollowing]);
+
+    // 5. Partition into Unviewed and Viewed groups
+    const unviewedGroups = groupsArray.filter((g) => !g.isViewed);
+    const viewedGroups = groupsArray.filter((g) => g.isViewed);
+
+    // Sort by upload/update time (newest timestamp first)
+    unviewedGroups.sort((a, b) => (b.latestStoryTimestamp || 0) - (a.latestStoryTimestamp || 0));
+    viewedGroups.sort((a, b) => (b.latestStoryTimestamp || 0) - (a.latestStoryTimestamp || 0));
+
+    // UNVIEWED stories appear first, VIEWED stories move to the back!
+    return [...unviewedGroups, ...viewedGroups];
+  }, [elephants, posts, isFollowing, viewedTimestamps]);
 
   // Main Feed Posts (Excludes story-only posts)
   const feedPosts = useMemo(() => {
@@ -333,15 +382,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   return (
     <div className="max-w-lg mx-auto w-full space-y-5 pb-24 animate-fadeIn pt-1">
       {/* ----------------------------------------------------------------- */}
-      {/* STORIES TRAY                                                      */}
+      {/* STORIES TRAY (Rectangular Story Cards / Kotu Layout)              */}
       {/* ----------------------------------------------------------------- */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-extrabold text-[#062E22] dark:text-emerald-300 uppercase tracking-wider">
+            <span className="text-xs font-black text-[#062E22] dark:text-emerald-300 uppercase tracking-wider">
               {t.storiesUpdates}
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+              {t.followedOnlyStories}
+            </span>
           </div>
 
           <button
@@ -353,8 +405,9 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           </button>
         </div>
 
+        {/* Horizontal Scrollable Story Cards Row */}
         <div className="flex gap-2.5 overflow-x-auto pb-2 pt-0.5 no-scrollbar -mx-1 px-1 items-stretch">
-          {/* Large "+" Story Creator Box */}
+          {/* Rectangular Add Story Box */}
           <div
             onClick={() => onOpenCreatePost(undefined, true)}
             className="flex-shrink-0 w-24 sm:w-26 cursor-pointer group"
@@ -372,17 +425,15 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
             </div>
           </div>
 
-          {/* Grouped Elephant Story Cards (Each card has multiple 3s story segments!) */}
+          {/* Grouped Elephant Story Cards (Each card has multiple 6s story segments) */}
           {compiledStoryGroups.length === 0 ? (
             <div className="flex-1 min-w-[220px] p-3 rounded-2xl bg-white dark:bg-[#121F1B] border border-dashed border-emerald-300/80 dark:border-emerald-900/60 flex flex-col justify-center items-start text-left space-y-1.5 shadow-2xs">
               <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#062E22] dark:text-emerald-300">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>{language === 'si' ? 'අලි ඇතුන්ගේ Stories' : 'Elephant Stories'}</span>
+                <span>{t.noFollowedStoriesTitle}</span>
               </div>
               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-snug">
-                {language === 'si'
-                  ? 'අලි ඇතුන්ගේ දෛනික Stories මෙහි දිස්වේ. කැමති ඇතුන් තෝරා Follow කරන්න!'
-                  : 'Daily stories appear here. Follow your favorite elephants in the directory!'}
+                {t.noFollowedStoriesDesc}
               </p>
               {onOpenDirectory && (
                 <button
@@ -390,13 +441,14 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   onClick={onOpenDirectory}
                   className="mt-0.5 px-3 py-1 bg-[#062E22] hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-amber-300 dark:text-amber-200 text-[10px] font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
                 >
-                  <span>{language === 'si' ? '🐘 ඇතුන් සොයන්න (Explore)' : '🐘 Explore Elephants'}</span>
+                  <span>{language === 'si' ? '🐘 ඇතුන් සොයන්න (Follow)' : '🐘 Explore & Follow'}</span>
                 </button>
               )}
             </div>
           ) : (
             compiledStoryGroups.map((group, groupIdx) => {
               const isLive = group.isLive;
+              const isViewed = group.isViewed;
               const bilingualName = formatBilingualElephantName(
                 { name: group.elephantName, sinhalaName: group.elephantSinhalaName },
                 language
@@ -412,9 +464,9 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 >
                   <div
                     className={`relative aspect-[3/4] rounded-2xl overflow-hidden shadow-xs bg-zinc-900 border-2 transition-all transform group-hover:scale-[1.02] ${
-                      group.isFollowed
-                        ? 'border-amber-400 ring-2 ring-amber-400/40'
-                        : 'border-emerald-500/60'
+                      isViewed
+                        ? 'border-zinc-500/40 dark:border-zinc-700/50 opacity-80 group-hover:opacity-100'
+                        : 'border-amber-400 ring-2 ring-amber-400/50 shadow-md'
                     }`}
                   >
                     <img
@@ -431,18 +483,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                           <Radio className="w-2 h-2" />
                           <span>LIVE</span>
                         </span>
-                      ) : group.isFollowed ? (
-                        <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-400 text-zinc-950 shadow-xs">
-                          <UserCheck className="w-2.5 h-2.5 stroke-[2.5]" />
-                          <span>{t.following}</span>
+                      ) : !isViewed ? (
+                        <span className="inline-flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-400 text-zinc-950 shadow-xs animate-pulse">
+                          <span>{t.newStory} • 6s</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-white bg-black/40 backdrop-blur-xs px-1.5 py-0.5 rounded-md border border-white/20">
-                          <span>Story</span>
+                        <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold text-zinc-300 bg-black/60 backdrop-blur-xs px-1.5 py-0.5 rounded-md border border-white/10">
+                          <Check className="w-2.5 h-2.5 text-emerald-400 stroke-[3]" />
+                          <span>{t.viewed}</span>
                         </span>
                       )}
 
-                      {/* Segments Count Badge (e.g. "3") */}
+                      {/* Segments Count Badge */}
                       <div className="px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs flex items-center gap-0.5 text-[9px] font-black text-amber-300 border border-amber-400/40 shadow-xs">
                         <Play className="w-2 h-2 fill-amber-300 stroke-none" />
                         <span>{segmentCount}</span>
@@ -451,7 +503,9 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
 
                     {/* Bottom Avatar & Elephant Bilingual Name */}
                     <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 text-white">
-                      <div className="w-5 h-5 rounded-full overflow-hidden border-2 border-amber-400 flex-shrink-0 bg-emerald-950 shadow-xs">
+                      <div className={`w-5 h-5 rounded-full overflow-hidden border-2 flex-shrink-0 bg-emerald-950 shadow-xs ${
+                        isViewed ? 'border-zinc-400' : 'border-amber-400'
+                      }`}>
                         <img
                           src={group.avatarPhoto || coverImg}
                           alt=""
@@ -583,7 +637,6 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 <div
                   onDoubleClick={(e) => handlePostDoubleClick(e, postId, post.likesCount || 0, true)}
                   onTouchEnd={(e) => handleTouchEndImage(e, postId, post.likesCount || 0, true)}
-                  onClick={() => onSelectPhoto ? onSelectPhoto(post.photoUrl) : (linkedElephant && onSelectElephant(linkedElephant))}
                   className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group select-none"
                 >
                   <img
@@ -597,6 +650,21 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     show={!!heartAnims[postId]?.show}
                     position={heartAnims[postId]?.pos}
                   />
+
+                  {/* Explicit Fullscreen Expand Button in bottom corner */}
+                  {onSelectPhoto && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectPhoto(post.photoUrl);
+                      }}
+                      className="absolute bottom-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all shadow-md active:scale-95 border border-white/20 opacity-80 hover:opacity-100"
+                      title={language === 'si' ? 'සම්පූර්ණ ප්‍රමාණයෙන් බලන්න' : 'View Fullscreen'}
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* 3. Action Buttons: ONLY LIKE, SHARE, SAVE */}
@@ -809,7 +877,6 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               <div
                 onDoubleClick={(e) => handlePostDoubleClick(e, elephantId, elephant.likesCount || 0, false)}
                 onTouchEnd={(e) => handleTouchEndImage(e, elephantId, elephant.likesCount || 0, false)}
-                onClick={() => onSelectPhoto ? onSelectPhoto(postImage) : onSelectElephant(elephant)}
                 className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group select-none"
               >
                 <img
@@ -835,6 +902,21 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     {isTusker ? t.tusker : t.elephant}
                   </span>
                 </div>
+
+                {/* Explicit Fullscreen Expand Button */}
+                {onSelectPhoto && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectPhoto(postImage);
+                    }}
+                    className="absolute bottom-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all shadow-md active:scale-95 border border-white/20 opacity-80 hover:opacity-100"
+                    title={language === 'si' ? 'සම්පූර්ණ ප්‍රමාණයෙන් බලන්න' : 'View Fullscreen'}
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* 3. Action Buttons: ONLY LIKE, SHARE, SAVE */}
@@ -942,6 +1024,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
             onSelectElephant(el);
           }}
           onShowNotification={showNotificationFallback}
+          onMarkStoryViewed={handleMarkStoryViewed}
         />
       )}
     </div>

@@ -245,21 +245,32 @@ export default function App() {
 
   const handlePostSuccess = async (newPost: ElephantPost, updatedElephantId?: string) => {
     setIsCreatePostOpen(false);
-    showNotification(language === 'si' ? 'ඡායාරූපය සාර්ථකව පළ කෙරිණි!' : 'Post published successfully!');
-    
-    // Refresh posts & elephants
-    const [freshPosts, freshElephants] = await Promise.all([
-      getAllElephantPosts(),
-      getElephants()
-    ]);
-    setPosts(freshPosts);
-    setElephants(freshElephants);
+    showNotification(
+      newPost.isStoryOnly
+        ? (language === 'si' ? 'Story එක සාර්ථකව පළ කෙරිණි!' : 'Story published successfully!')
+        : (language === 'si' ? 'ඡායාරූපය සාර්ථකව පළ කෙරිණි!' : 'Post published successfully!')
+    );
 
-    if (updatedElephantId) {
-      const refreshedElephant = freshElephants.find((e) => e.id === updatedElephantId);
-      if (refreshedElephant && selectedElephant?.id === updatedElephantId) {
-        setSelectedElephant(refreshedElephant);
+    // Optimistically insert post immediately so it instantly appears in stories tray & feed
+    setPosts((prev) => [newPost, ...prev.filter((p) => p.id !== newPost.id)]);
+    
+    // Refresh posts & elephants in background
+    try {
+      const [freshPosts, freshElephants] = await Promise.all([
+        getAllElephantPosts(),
+        getElephants()
+      ]);
+      setPosts(freshPosts);
+      setElephants(freshElephants);
+
+      if (updatedElephantId) {
+        const refreshedElephant = freshElephants.find((e) => e.id === updatedElephantId);
+        if (refreshedElephant && selectedElephant?.id === updatedElephantId) {
+          setSelectedElephant(refreshedElephant);
+        }
       }
+    } catch {
+      // Retain optimistic update
     }
   };
 

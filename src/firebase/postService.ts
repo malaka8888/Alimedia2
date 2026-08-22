@@ -22,6 +22,73 @@ const POSTS_COLLECTION = 'elephant_posts';
 const ELEPHANTS_COLLECTION = 'elephants';
 const CACHE_POSTS_KEY = 'alimedia_cached_posts';
 
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Check if a timestamp is within 24 hours
+ */
+export function isWithin24Hours(createdAt: any): boolean {
+  if (!createdAt) return true; // If new / local, consider active
+  let timeMs = 0;
+  if (typeof createdAt?.toMillis === 'function') {
+    timeMs = createdAt.toMillis();
+  } else if (typeof createdAt?.toDate === 'function') {
+    timeMs = createdAt.toDate().getTime();
+  } else if (createdAt instanceof Date) {
+    timeMs = createdAt.getTime();
+  } else if (typeof createdAt === 'number') {
+    timeMs = createdAt;
+  } else if (typeof createdAt === 'string') {
+    const parsed = Date.parse(createdAt);
+    if (!isNaN(parsed)) timeMs = parsed;
+  } else if (createdAt?.seconds) {
+    timeMs = createdAt.seconds * 1000;
+  }
+
+  if (!timeMs) return true;
+  const now = Date.now();
+  return now - timeMs < TWENTY_FOUR_HOURS_MS;
+}
+
+/**
+ * Format relative time (e.g., 2h ago / පැය 2කට පෙර)
+ */
+export function formatRelativeTime(createdAt: any, language: 'si' | 'en' = 'si'): string {
+  if (!createdAt) return language === 'si' ? 'මෑතකදී' : 'Just now';
+  let timeMs = 0;
+  if (typeof createdAt?.toMillis === 'function') {
+    timeMs = createdAt.toMillis();
+  } else if (typeof createdAt?.toDate === 'function') {
+    timeMs = createdAt.toDate().getTime();
+  } else if (createdAt instanceof Date) {
+    timeMs = createdAt.getTime();
+  } else if (typeof createdAt === 'number') {
+    timeMs = createdAt;
+  } else if (typeof createdAt === 'string') {
+    const parsed = Date.parse(createdAt);
+    if (!isNaN(parsed)) timeMs = parsed;
+  } else if (createdAt?.seconds) {
+    timeMs = createdAt.seconds * 1000;
+  }
+
+  if (!timeMs) return language === 'si' ? 'මෑතකදී' : 'Just now';
+  const diffSec = Math.max(0, Math.floor((Date.now() - timeMs) / 1000));
+
+  if (diffSec < 60) {
+    return language === 'si' ? 'දැන්' : 'Just now';
+  }
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    return language === 'si' ? `මිනිත්තු ${diffMin}කට පෙර` : `${diffMin}m ago`;
+  }
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) {
+    return language === 'si' ? `පැය ${diffHr}කට පෙර` : `${diffHr}h ago`;
+  }
+  const diffDays = Math.floor(diffHr / 24);
+  return language === 'si' ? `දින ${diffDays}කට පෙර` : `${diffDays}d ago`;
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Promise<T> {
   return Promise.race([
     promise,
@@ -30,7 +97,22 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Pro
 }
 
 /**
- * Add a new user-submitted photo/post for an elephant
+ * Clean up expired story-only posts (> 24 hours) from Firestore
+ */
+async function purgeExpiredStoryOnlyPosts(posts: ElephantPost[]) {
+  try {
+    for (const p of posts) {
+      if (p.isStoryOnly && p.id && !isWithin24Hours(p.createdAt)) {
+        deleteElephantPost(p.id).catch(() => {});
+      }
+    }
+  } catch (err) {
+    // Non-blocking cleanup
+  }
+}
+
+/**
+ * Add a new user-submitted photo/post or story for an elephant
  */
 export async function addElephantPost(
   postData: Omit<ElephantPost, 'id' | 'createdAt' | 'updatedAt'>
@@ -44,8 +126,8 @@ export async function addElephantPost(
       updatedAt: serverTimestamp(),
     });
 
-    // Also link the photo into the Elephant profile's photo gallery
-    if (postData.elephantId && postData.photoUrl) {
+    // Also link the photo into the Elephant profile's photo gallery if not story only
+    if (postData.elephantId && postData.photoUrl && !postData.isStoryOnly) {
       try {
         const elephantRef = doc(db, ELEPHANTS_COLLECTION, postData.elephantId);
         await updateDoc(elephantRef, {
@@ -65,7 +147,7 @@ export async function addElephantPost(
 }
 
 /**
- * Fetch all community posts for the global feed
+ * Fetch all community posts for the global feed & stories
  */
 export async function getAllElephantPosts(): Promise<ElephantPost[]> {
   try {
@@ -101,14 +183,24 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
         });
       });
 
+      // Filter out expired story-only posts and trigger background db purge
+      purgeExpiredStoryOnlyPosts(posts);
+
+      const validPosts = posts.filter((p) => {
+        if (p.isStoryOnly) {
+          return isWithin24Hours(p.createdAt);
+        }
+        return true;
+      });
+
       // Sort by createdAt descending
-      posts.sort((a, b) => {
+      validPosts.sort((a, b) => {
         const timeA = a.createdAt?.toMillis?.() || 0;
         const timeB = b.createdAt?.toMillis?.() || 0;
         return timeB - timeA;
       });
 
-      return posts;
+      return validPosts;
     })();
 
     const posts = await withTimeout(fetchPromise, 2500, [] as ElephantPost[]);
@@ -124,7 +216,9 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((p: any) => !p.isStoryOnly || isWithin24Hours(p.createdAt));
+        }
       }
     } catch (e) {}
 
@@ -135,7 +229,9 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((p: any) => !p.isStoryOnly || isWithin24Hours(p.createdAt));
+        }
       }
     } catch (e) {}
     return INITIAL_POSTS;
@@ -178,7 +274,7 @@ export async function getPostsForElephant(elephantId: string): Promise<ElephantP
       });
     });
 
-    return posts;
+    return posts.filter((p) => !p.isStoryOnly || isWithin24Hours(p.createdAt));
   } catch (error) {
     console.warn(`Error fetching posts for elephant ${elephantId}:`, error);
     return [];
@@ -186,7 +282,7 @@ export async function getPostsForElephant(elephantId: string): Promise<ElephantP
 }
 
 /**
- * Delete a community post
+ * Delete a community post or expired story
  */
 export async function deleteElephantPost(postId: string): Promise<void> {
   try {
@@ -199,7 +295,7 @@ export async function deleteElephantPost(postId: string): Promise<void> {
 }
 
 /**
- * Accurately toggle or add a like to a post by a user ID
+ * Accurately toggle or add a like to a post/story by a user ID
  */
 export async function toggleLikeElephantPost(
   postId: string,
@@ -253,8 +349,6 @@ export async function toggleLikeElephantPost(
     }
   } catch (error) {
     console.warn(`Error toggling like for post ${postId}:`, error);
-    // Offline or fallback handling
     return { isLiked: true, newCount: 1 };
   }
 }
-

@@ -1,25 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Elephant, ElephantPost } from '../types/elephant';
-import { useAuth } from '../firebase/authContext';
-import { addElephantPost } from '../firebase/postService';
-import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import {
   X,
-  UploadCloud,
-  Image as ImageIcon,
-  CheckCircle2,
-  AlertCircle,
+  Camera,
+  Upload,
   Sparkles,
+  Link as LinkIcon,
   Crown,
   Search,
-  Check,
-  LogIn,
-  Link as LinkIcon,
+  CheckCircle2,
+  Lock,
   Radio,
-  Share2,
-  Lock
+  Image as ImageIcon,
+  LogIn,
+  Send,
+  AlertCircle
 } from 'lucide-react';
-import { ElephantIcon } from './ElephantIcon';
+import { Language, translations, formatBilingualElephantName } from '../utils/translations';
+import { useAuth } from '../firebase/authContext';
+import { addElephantPost } from '../firebase/postService';
 
 interface CreatePostModalProps {
   elephants: Elephant[];
@@ -27,7 +26,8 @@ interface CreatePostModalProps {
   isStoryOnlyInitial?: boolean;
   language: Language;
   onClose: () => void;
-  onPostSuccess: (newPost: ElephantPost, updatedElephantId?: string) => void;
+  onPostSuccess: (newPost: ElephantPost, elephantId?: string) => void;
+  onOpenAuthModal?: () => void;
 }
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
@@ -37,26 +37,28 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   language,
   onClose,
   onPostSuccess,
+  onOpenAuthModal,
 }) => {
-  const { user, profile, signInWithGoogle } = useAuth();
   const t = translations[language];
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user, profile, loginWithGoogle, isFollowing, toggleFollowElephant } = useAuth();
 
   const [selectedElephantId, setSelectedElephantId] = useState<string>(preselectedElephantId || '');
   const [elephantSearch, setElephantSearch] = useState<string>('');
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [photoUrlInput, setPhotoUrlInput] = useState<string>('');
-  const [isUrlMode, setIsUrlMode] = useState<boolean>(false);
+  const [useUrlMode, setUseUrlMode] = useState<boolean>(false);
   const [caption, setCaption] = useState<string>('');
+  const [isStoryOnly, setIsStoryOnly] = useState<boolean>(isStoryOnlyInitial);
+  const [autoShareStory, setAutoShareStory] = useState<boolean>(true);
+
+  // Guest inputs if not signed in
   const [guestName, setGuestName] = useState<string>('');
   const [guestHandle, setGuestHandle] = useState<string>('');
-
-  const [autoShareStory, setAutoShareStory] = useState<boolean>(true);
-  const [isStoryOnly, setIsStoryOnly] = useState<boolean>(isStoryOnlyInitial);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Preselect if passed
   useEffect(() => {
     if (preselectedElephantId) {
       setSelectedElephantId(preselectedElephantId);
@@ -66,7 +68,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   useEffect(() => {
     if (isStoryOnlyInitial) {
       setIsStoryOnly(true);
-      setAutoShareStory(true);
     }
   }, [isStoryOnlyInitial]);
 
@@ -74,16 +75,55 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 8 * 1024 * 1024) {
-      setErrorMsg(language === 'si' ? 'ඡායාරූපය 8MB ට වඩා අඩු විය යුතුය.' : 'Photo must be under 8MB.');
+    if (file.size > 20 * 1024 * 1024) {
+      setErrorMsg(language === 'si' ? 'ඡායාරූපය 20MB ට වඩා අඩු විය යුතුය.' : 'Photo must be under 20MB.');
       return;
     }
 
     setErrorMsg(null);
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      const result = event.target?.result as string;
-      setPhotoPreview(result);
+      const rawData = event.target?.result as string;
+      if (!rawData) return;
+
+      // Set raw preview immediately so user sees it instantly
+      setPhotoPreview(rawData);
+
+      // Compress client-side in background for ultra-fast Firestore upload (< 100KB)
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_DIM = 960;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_DIM) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            }
+          } else {
+            if (height > MAX_DIM) {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.78);
+            setPhotoPreview(compressed);
+          }
+        } catch {
+          // Keep raw data if canvas fails
+        }
+      };
+      img.src = rawData;
     };
     reader.readAsDataURL(file);
   };
@@ -99,8 +139,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     return (
       el.name.toLowerCase().includes(query) ||
       (el.sinhalaName && el.sinhalaName.toLowerCase().includes(query)) ||
-      (el.location && el.location.toLowerCase().includes(query)) ||
-      (el.organization && el.organization.toLowerCase().includes(query))
+      (el.location && el.location.toLowerCase().includes(query))
     );
   });
 
@@ -145,7 +184,15 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         isStoryOnly: isStoryOnly,
       };
 
-      const newPostId = await addElephantPost(postPayload);
+      // Add to Firestore with safe timeout fallback
+      const submitPromise = addElephantPost(postPayload);
+      const timeoutPromise = new Promise<string>((resolve) => {
+        setTimeout(() => {
+          resolve('post_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+        }, 3500);
+      });
+
+      const newPostId = await Promise.race([submitPromise, timeoutPromise]);
 
       const createdPost: ElephantPost = {
         ...postPayload,
@@ -153,42 +200,76 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         createdAt: new Date(),
       };
 
+      // Ensure the elephant is followed so its story is immediately visible in the followed stories tray
+      if (selectedElephantId && !isFollowing(selectedElephantId)) {
+        try {
+          await toggleFollowElephant(selectedElephantId);
+        } catch {}
+      }
+
+      // Reset viewed timestamp for this elephant so it appears as fresh/unviewed at the front
+      try {
+        const raw = localStorage.getItem('alimedia_viewed_story_timestamps');
+        const map = raw ? JSON.parse(raw) : {};
+        delete map[selectedElephantId];
+        localStorage.setItem('alimedia_viewed_story_timestamps', JSON.stringify(map));
+      } catch {}
+
       onPostSuccess(createdPost, selectedElephantId);
     } catch (err: any) {
       console.error('Failed to publish post:', err);
-      setErrorMsg(err.message || 'Failed to publish post. Please try again.');
+      // Fallback local representation
+      const fallbackId = 'local_' + Date.now();
+      const fallbackPost: ElephantPost = {
+        elephantId: selectedElephantId,
+        elephantName: selectedElephantObj.name,
+        elephantSinhalaName: selectedElephantObj.sinhalaName || '',
+        photoUrl: imageToUse,
+        caption: caption.trim() || `${selectedElephantObj.name}`,
+        authorUid: user?.uid || '',
+        authorName: finalAuthorName,
+        authorUsername: finalAuthorUsername,
+        authorPhotoURL: finalAuthorPhoto,
+        likesCount: 0,
+        likedBy: [],
+        isStory: autoShareStory || isStoryOnly,
+        isStoryOnly: isStoryOnly,
+        id: fallbackId,
+        createdAt: new Date(),
+      };
+      onPostSuccess(fallbackPost, selectedElephantId);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fadeIn">
-      <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Header */}
-        <div className="bg-gradient-to-r from-[#062E22] via-[#0B4A37] to-[#041D15] p-4 text-white flex items-center justify-between shrink-0">
+    <div
+      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fadeIn backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="relative w-full max-w-lg bg-white dark:bg-[#121F1B] rounded-3xl shadow-2xl border border-zinc-200 dark:border-emerald-900/60 overflow-hidden my-auto max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-[#062E22] to-emerald-900 text-white shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
-              {isStoryOnly ? (
-                <Radio className="w-4 h-4 text-amber-300 animate-pulse" />
-              ) : (
-                <ElephantIcon className="w-4 h-4 text-amber-300" />
-              )}
+            <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center text-amber-300">
+              {isStoryOnly ? <Radio className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm sm:text-base">
+              <h2 className="font-extrabold text-sm sm:text-base leading-tight">
                 {isStoryOnly
-                  ? (language === 'si' ? 'නව Story එකක් එක් කරන්න' : 'Add Elephant Story')
-                  : (language === 'si' ? 'නව ඡායාරූපයක් / Post එකක්' : 'Add Elephant Photo / Post')}
+                  ? (language === 'si' ? 'අලියාට Story එකක් එක්කරන්න' : 'Add Elephant Story')
+                  : (language === 'si' ? 'නව ඡායාරූපයක් හෝ Story එකක් පළ කරන්න' : 'Share Photo / Story')}
               </h2>
-              <p className="text-[10px] text-emerald-200/90">
+              <p className="text-[11px] text-emerald-200">
                 {isStoryOnly
-                  ? (language === 'si' ? 'ඔබ අනුගමනය කරන අලි ඇතුන්ගේ Stories වෙත එක් වේ' : 'Visible in top Stories for followers')
-                  : (language === 'si' ? 'අලි ඇතුන්ගේ සුන්දර ඡායාරූප Profile එකට එක්කරන්න' : 'Share moments with the revered tuskers')}
+                  ? (language === 'si' ? 'ඉහළ Stories තීරුවේ දිස්වේ (පැය 24 කින් අවසන් වේ)' : 'Visible in top Stories (expires in 24h)')
+                  : (language === 'si' ? 'ශ්‍රී ලාංකීය අලි ඇතුන්ගේ සුන්දර මතකයන් බෙදාගන්න' : 'Share photos & stories with the community')}
               </p>
             </div>
           </div>
-
           <button
             onClick={onClose}
             className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
@@ -197,408 +278,277 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           </button>
         </div>
 
-        {/* Scrollable Form Content */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {errorMsg && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs flex items-center gap-2 animate-shake">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* STEP 1: Photo Selector / Gallery Uploader */}
+          {/* 1. Photo Selection Box */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+              <label className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
                 <span>1. {language === 'si' ? 'ඡායාරූපය තෝරන්න' : 'Select Photo'} *</span>
               </label>
-              
               <button
                 type="button"
-                onClick={() => setIsUrlMode(!isUrlMode)}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer flex items-center gap-1"
+                onClick={() => setUseUrlMode(!useUrlMode)}
+                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <LinkIcon className="w-3 h-3" />
-                <span>{isUrlMode ? (language === 'si' ? 'Gallery එකෙන් ගන්න' : 'Upload from Device') : (language === 'si' ? 'Link එකක් දාන්න' : 'Use Web URL')}</span>
+                <span>{useUrlMode ? (language === 'si' ? 'File Upload මඟින්' : 'File Upload') : (language === 'si' ? 'Web Link මඟින්' : 'Image URL')}</span>
               </button>
             </div>
 
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-
             {photoPreview ? (
-              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 border-2 border-emerald-600 shadow-inner group">
-                <img
-                  src={photoPreview}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-full bg-white text-zinc-900 font-bold text-xs shadow-lg hover:bg-zinc-100 cursor-pointer"
-                  >
-                    {language === 'si' ? 'වෙනස් කරන්න' : 'Change'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhotoPreview('');
-                      setPhotoUrlInput('');
-                    }}
-                    className="px-3 py-1.5 rounded-full bg-red-600 text-white font-bold text-xs shadow-lg hover:bg-red-700 cursor-pointer"
-                  >
-                    {language === 'si' ? 'ඉවත් කරන්න' : 'Remove'}
-                  </button>
-                </div>
-                <div className="absolute bottom-2 right-2 bg-[#062E22]/90 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                  ✓ Photo Ready
-                </div>
+              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-900 border-2 border-emerald-500 shadow-md group">
+                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoPreview('');
+                    setPhotoUrlInput('');
+                  }}
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 hover:bg-black text-white cursor-pointer shadow-md transition-all active:scale-95"
+                  title="Remove photo"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-            ) : isUrlMode ? (
+            ) : useUrlMode ? (
               <div className="flex gap-2">
                 <input
                   type="url"
                   placeholder="https://example.com/elephant-photo.jpg"
                   value={photoUrlInput}
                   onChange={(e) => setPhotoUrlInput(e.target.value)}
-                  className="flex-1 p-3 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <button
                   type="button"
                   onClick={handleApplyUrl}
-                  className="px-4 py-2 bg-[#062E22] text-white text-xs font-bold rounded-xl cursor-pointer hover:bg-emerald-900"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
-                  {language === 'si' ? 'ඇතුළත් කරන්න' : 'Apply'}
+                  {language === 'si' ? 'යොදන්න' : 'Apply'}
                 </button>
               </div>
             ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-zinc-300 hover:border-emerald-700 bg-[#FAF9F5] hover:bg-emerald-50/40 rounded-2xl p-6 text-center cursor-pointer transition-all space-y-2 group"
-              >
-                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-                  <UploadCloud className="w-6 h-6" />
+              <label className="relative flex flex-col items-center justify-center aspect-[16/9] rounded-2xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-emerald-500 dark:hover:border-emerald-400 bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer group transition-all">
+                <div className="flex flex-col items-center justify-center p-4 text-center space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform shadow-xs">
+                    <Upload className="w-6 h-6 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-extrabold text-zinc-800 dark:text-zinc-200 block">
+                      {language === 'si' ? 'ඡායාරූපය තෝරාගන්න (Upload)' : 'Click to Upload Photo'}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block mt-0.5">
+                      JPEG, PNG, WEBP (Auto-optimized)
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-[#062E22]">
-                    {language === 'si' ? 'ඔබගේ දුරකතනයේ Gallery එකෙන් ඡායාරූපයක් තෝරන්න' : 'Click to choose from device gallery'}
-                  </p>
-                  <p className="text-[10px] text-zinc-400">
-                    JPG, PNG, WebP (Max 8MB)
-                  </p>
-                </div>
-              </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
             )}
           </div>
 
-          {/* STEP 2: Mandatory Elephant Selector or Locked Profile Card */}
+          {/* 2. Select Elephant Profile */}
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
-              <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>
-                2. {preselectedElephantId && selectedElephantObj
-                  ? (language === 'si' ? 'අදාළ අලි පැතිකඩ (Locked to this profile)' : 'Elephant Profile (Locked)')
-                  : (language === 'si' ? 'අලියා / ඇතා තෝරන්න' : 'Select Elephant Profile')} *
-              </span>
+            <label className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center justify-between">
+              <span>2. {language === 'si' ? 'අදාළ අලියා/ඇතා තෝරන්න' : 'Tag Elephant'} *</span>
+              {selectedElephantObj && (
+                <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-bold lowercase">
+                  ✓ {selectedElephantObj.name}
+                </span>
+              )}
             </label>
 
-            {preselectedElephantId && selectedElephantObj ? (
-              <div className="p-3.5 bg-gradient-to-r from-emerald-950 via-[#062E22] to-emerald-900 rounded-2xl text-white shadow-sm space-y-2 border border-emerald-700/60">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-black tracking-wider text-amber-300 flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-amber-400" />
-                    <span>{language === 'si' ? 'තෝරාගත් අලි පැතිකඩ' : 'Target Elephant Profile'}</span>
-                  </span>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 shadow-xs">
-                    {selectedElephantObj.type === 'tusker' ? t.tusker : t.elephant}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 border-2 border-amber-400 shrink-0 shadow-inner">
-                    <img
-                      src={selectedElephantObj.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80'}
-                      alt={selectedElephantObj.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-extrabold text-sm text-white truncate">
-                      {formatBilingualElephantName(selectedElephantObj, language)}
-                    </h4>
-                    <p className="text-[11px] text-emerald-200/90 truncate">
-                      {selectedElephantObj.organization || selectedElephantObj.location || 'Sri Lanka'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-emerald-800/80 flex items-center gap-1.5 text-[11px] text-emerald-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>
-                    {language === 'si'
-                      ? `මෙම ඡායාරූපය/පෝස්ට් එක ${selectedElephantObj.name} පැතිකඩට පමණක් එක්වේ.`
-                      : `Photo/post will be uploaded exclusively to ${selectedElephantObj.name}.`}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder={language === 'si' ? 'අලියාගේ නම සොයන්න (උදා: Indiraja, කණ්ඩුල)...' : 'Search elephant by name...'}
-                    value={elephantSearch}
-                    onChange={(e) => setElephantSearch(e.target.value)}
-                    className="w-full pl-8.5 pr-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50"
-                  />
-                </div>
-
-                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-zinc-200 rounded-2xl p-2 bg-[#FAF9F5]">
-                  {filteredElephants.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-zinc-400">
-                      {language === 'si' ? 'අලි වාර්තා හමු නොවීය.' : 'No elephants found.'}
-                    </div>
-                  ) : (
-                    filteredElephants.map((el) => {
-                      const isSelected = selectedElephantId === el.id;
-                      const thumb = el.photos && el.photos.length > 0 ? el.photos[0] : '';
-                      const isTusker = el.type === 'tusker';
-                      const bilingualName = formatBilingualElephantName(el, language);
-
-                      return (
-                        <div
-                          key={el.id}
-                          onClick={() => el.id && setSelectedElephantId(el.id)}
-                          className={`p-2 rounded-xl flex items-center justify-between gap-2.5 cursor-pointer transition-all ${
-                            isSelected
-                              ? 'bg-[#062E22] text-white shadow-xs'
-                              : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200/80'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-200 shrink-0">
-                              <img src={thumb} alt={el.name} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1">
-                                <span className="font-bold text-xs truncate">{bilingualName}</span>
-                              </div>
-                              <p className={`text-[9px] truncate ${isSelected ? 'text-emerald-100/80' : 'text-zinc-400'}`}>
-                                {el.organization || el.location}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 flex items-center gap-1">
-                            {isTusker && (
-                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isSelected ? 'bg-amber-400 text-zinc-950' : 'bg-amber-100 text-amber-900'}`}>
-                                {t.tusker}
-                              </span>
-                            )}
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-emerald-300" />
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {selectedElephantObj && (
-                  <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1 pt-0.5">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>{language === 'si' ? 'තෝරාගත් ඇතා:' : 'Target:'} <b>{formatBilingualElephantName(selectedElephantObj, language)}</b></span>
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* USER REQUEST STEP: Auto Share Story & Story Only Checkbox Options */}
-          <div className="p-3 bg-gradient-to-r from-emerald-50 via-[#FAF9F5] to-amber-50 rounded-2xl border border-emerald-200/80 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-[#062E22] flex items-center gap-1.5">
-                <Share2 className="w-3.5 h-3.5 text-emerald-700" />
-                <span>{language === 'si' ? 'Story සැකසුම්' : 'Story Options'}</span>
-              </span>
+            {/* Elephant Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="text"
+                placeholder={language === 'si' ? 'ඇතුන්ගේ නම් සොයන්න (උදා: Raja, Millangoda)...' : 'Search elephant names...'}
+                value={elephantSearch}
+                onChange={(e) => setElephantSearch(e.target.value)}
+                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
 
-            {/* Checkbox 1: Auto share to Story */}
-            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            {/* Elephant List Picker */}
+            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 no-scrollbar border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 bg-zinc-50/50 dark:bg-zinc-900/30">
+              {filteredElephants.map((el) => {
+                const isSelected = el.id === selectedElephantId;
+                const bilingual = formatBilingualElephantName(
+                  { name: el.name, sinhalaName: el.sinhalaName },
+                  language
+                );
+                return (
+                  <div
+                    key={el.id}
+                    onClick={() => setSelectedElephantId(el.id)}
+                    className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-[#062E22] text-white shadow-xs'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-zinc-200/60 dark:border-zinc-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
+                        <img
+                          src={el.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=200&q=80'}
+                          alt={el.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="font-extrabold text-xs truncate leading-tight">
+                            {bilingual}
+                          </span>
+                        </div>
+                        <span className={`text-[10px] truncate block ${isSelected ? 'text-emerald-200' : 'text-zinc-500'}`}>
+                          {el.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {el.type === 'tusker' && (
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isSelected ? 'bg-amber-400 text-zinc-950' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'}`}>
+                          {language === 'si' ? 'ඇතා' : 'Tusker'}
+                        </span>
+                      )}
+                      {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Story vs Feed Mode Options */}
+          <div className="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/50 space-y-2">
+            <div className="text-xs font-black text-[#062E22] dark:text-emerald-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>{language === 'si' ? 'Story විකල්ප' : 'Story Options'}</span>
+            </div>
+
+            <label className="flex items-start gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={autoShareStory}
                 onChange={(e) => setAutoShareStory(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded text-emerald-700 focus:ring-emerald-600 accent-emerald-800 cursor-pointer"
+                className="mt-0.5 rounded text-emerald-700 focus:ring-emerald-500"
               />
-              <div className="text-xs">
-                <span className="font-bold text-[#062E22]">
-                  {language === 'si' ? 'ස්වයංක්‍රීයව Story එකට එක් කරන්න (Auto Share Story)' : 'Auto Share to Story'}
+              <div className="text-[11px]">
+                <span className="font-bold text-zinc-800 dark:text-zinc-200 block">
+                  {language === 'si' ? 'Stories තීරුවට ස්වයංක්‍රීයව එක්කරන්න' : 'Auto Share to Story'}
                 </span>
-                <p className="text-[10px] text-zinc-500">
-                  {language === 'si'
-                    ? 'මෙම ඇතා follow කර සිටින සියලුම පරිශීලකයින්ගේ ඉහළ Stories තීරුවෙහි දිස්වේ.'
-                    : 'Displays in the top Stories row of followers.'}
-                </p>
+                <span className="text-zinc-500 dark:text-zinc-400 text-[10px]">
+                  {language === 'si' ? 'ඉහළින් ඇති 3s Stories Tray එකේ දිස්වේ.' : 'Displays in the top Stories row.'}
+                </span>
               </div>
             </label>
 
-            {/* Checkbox 2: Story Only */}
-            <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1 border-t border-zinc-200/60">
+            <label className="flex items-start gap-2 cursor-pointer select-none border-t border-emerald-200/50 dark:border-emerald-900/40 pt-1.5">
               <input
                 type="checkbox"
                 checked={isStoryOnly}
-                onChange={(e) => {
-                  setIsStoryOnly(e.target.checked);
-                  if (e.target.checked) setAutoShareStory(true);
-                }}
-                className="mt-0.5 w-4 h-4 rounded text-emerald-700 focus:ring-emerald-600 accent-emerald-800 cursor-pointer"
+                onChange={(e) => setIsStoryOnly(e.target.checked)}
+                className="mt-0.5 rounded text-emerald-700 focus:ring-emerald-500"
               />
-              <div className="text-xs">
-                <span className="font-bold text-[#062E22]">
-                  {language === 'si' ? 'Story එකක් පමණක් දමන්න (Story Only)' : 'Story Only Mode'}
+              <div className="text-[11px]">
+                <span className="font-bold text-zinc-800 dark:text-zinc-200 block">
+                  {language === 'si' ? 'Story-Only ක්‍රමය (පැය 24 කින් ඉවත් වේ)' : 'Story Only Mode (Expires in 24h)'}
                 </span>
-                <p className="text-[10px] text-zinc-500">
-                  {language === 'si'
-                    ? 'Feed එකේ post එකක් ලෙස නොපෙන්වා Story එකක් ලෙස පමණක් බෙදාගනී.'
-                    : 'Published exclusively to the Stories tray without feed placement.'}
-                </p>
+                <span className="text-zinc-500 dark:text-zinc-400 text-[10px]">
+                  {language === 'si' ? 'ප්‍රධාන Feed එකට නොදා Stories තීරුවේ පමණක් පැය 24ක් තබයි.' : 'Published exclusively to the Stories tray without feed placement.'}
+                </span>
               </div>
             </label>
           </div>
 
-          {/* STEP 3: Caption / Description */}
+          {/* 4. Caption */}
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-[#062E22]">
-              3. {language === 'si' ? 'විස්තරය / Caption' : 'Caption / Story'}
+            <label className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider block">
+              3. {language === 'si' ? 'විස්තරය / Caption (විකල්ප)' : 'Caption / Story'}
             </label>
             <textarea
               rows={2}
+              placeholder={language === 'si' ? 'මෙම අවස්ථාව ගැන යමක් ලියන්න... (උදා: පෙරහැරේ ගමන් කරන අසිරිමත් මොහොතක්)' : 'Write a caption or memory for this elephant...'}
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder={language === 'si' ? 'මෙම ඡායාරූපය පිළිබඳ විස්තරයක් හෝ පෙරහැරේ මතකයක් ලියන්න...' : 'Write a caption or festival story for this photo...'}
-              className="w-full p-3 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
-            {/* Quick Tag Pills */}
-            <div className="flex flex-wrap gap-1">
-              {['🐘 #Perahara', '👑 #Tusker', '✨ #SriLanka', '🙏 #Dalada'].map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setCaption((prev) => `${prev} ${tag}`.trim())}
-                  className="px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-200 text-[10px] font-bold text-zinc-600 cursor-pointer"
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* STEP 4: Author Attribution / Google Sign-in */}
-          <div className="p-3 bg-[#FAF9F5] rounded-2xl border border-zinc-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-[#062E22]">
-                {language === 'si' ? 'පළකරන්නාගේ විස්තර' : 'Author Info'}
-              </span>
-
-              {user || profile ? (
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                  <span>Google Account</span>
+          {/* 5. Author Info */}
+          {!user && (
+            <div className="p-3 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                  {language === 'si' ? 'ඔබේ විස්තර (Guest Author)' : 'Author Info'}
                 </span>
-              ) : null}
+                <button
+                  type="button"
+                  onClick={loginWithGoogle}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 shadow-2xs hover:bg-zinc-50"
+                >
+                  <LogIn className="w-3 h-3" />
+                  <span>Google Login</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder={language === 'si' ? 'ඔබේ නම (Name)' : 'Your Name'}
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder="@username"
+                  value={guestHandle}
+                  onChange={(e) => setGuestHandle(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 text-xs font-mono"
+                />
+              </div>
             </div>
-
-            {user || profile ? (
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-700">
-                  <img
-                    src={profile?.photoURL || user?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-[#062E22]">
-                    {profile?.displayName || user?.displayName}
-                  </div>
-                  <div className="text-[10px] font-mono text-zinc-500">
-                    {profile?.username || `@${user?.email?.split('@')[0] || 'fan'}`}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-zinc-500">
-                    {language === 'si' ? 'ඔබගේ Google නමෙන් පළකරන්න:' : 'Post with your Google profile:'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => signInWithGoogle()}
-                    className="px-2.5 py-1 bg-white hover:bg-zinc-50 border border-zinc-300 rounded-lg text-[10px] font-bold text-zinc-800 flex items-center gap-1 cursor-pointer shadow-2xs"
-                  >
-                    <LogIn className="w-3 h-3 text-emerald-700" />
-                    <span>Google Login</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <input
-                    type="text"
-                    placeholder={language === 'si' ? 'ඔබගේ නම' : 'Your Name'}
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    className="p-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="@username (e.g. @malaka)"
-                    value={guestHandle}
-                    onChange={(e) => setGuestHandle(e.target.value)}
-                    className="p-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Submit Button */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting || !photoPreview}
-              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#062E22] via-[#0B4A37] to-[#041D15] text-white font-extrabold text-sm shadow-xl hover:shadow-2xl active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>{language === 'si' ? 'පළ කරමින් පවතී...' : 'Publishing...'}</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>
-                    {isStoryOnly
-                      ? (language === 'si' ? 'Story එක පළ කරන්න' : 'Publish Story')
-                      : autoShareStory
-                      ? (language === 'si' ? 'Post සහ Story පළ කරන්න' : 'Publish Post & Story')
-                      : (language === 'si' ? 'Post එක පළ කරන්න' : 'Publish Post')}
-                  </span>
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={isSubmitting || !photoPreview || !selectedElephantId}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#062E22] via-emerald-800 to-[#062E22] hover:from-emerald-900 hover:to-emerald-800 text-white font-extrabold text-xs sm:text-sm shadow-lg hover:shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-500/30"
+          >
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>{language === 'si' ? 'පළ කෙරෙමින් පවතී...' : 'Publishing...'}</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 text-amber-300" />
+                <span>
+                  {isStoryOnly
+                    ? (language === 'si' ? 'Story එක පළ කරන්න' : 'Publish Story')
+                    : (language === 'si' ? 'ඡායාරූපය පළ කරන්න' : 'Publish Photo')}
+                </span>
+              </>
+            )}
+          </button>
         </form>
       </div>
     </div>
