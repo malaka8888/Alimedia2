@@ -18,6 +18,14 @@ import { ElephantPost } from '../types/elephant';
 
 const POSTS_COLLECTION = 'elephant_posts';
 const ELEPHANTS_COLLECTION = 'elephants';
+const CACHE_POSTS_KEY = 'alimedia_cached_posts';
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs))
+  ]);
+}
 
 /**
  * Add a new user-submitted photo/post for an elephant
@@ -59,47 +67,75 @@ export async function addElephantPost(
  */
 export async function getAllElephantPosts(): Promise<ElephantPost[]> {
   try {
-    const postsCol = collection(db, POSTS_COLLECTION);
-    const q = query(postsCol);
-    const snapshot = await getDocs(q);
+    const fetchPromise = (async () => {
+      const postsCol = collection(db, POSTS_COLLECTION);
+      const q = query(postsCol);
+      const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
-      return [];
+      if (snapshot.empty) {
+        return [];
+      }
+
+      const posts: ElephantPost[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        posts.push({
+          id: docSnap.id,
+          elephantId: data.elephantId,
+          elephantName: data.elephantName || 'Unknown Elephant',
+          elephantSinhalaName: data.elephantSinhalaName || '',
+          photoUrl: data.photoUrl,
+          caption: data.caption || '',
+          authorUid: data.authorUid || '',
+          authorName: data.authorName || 'Anonymous',
+          authorUsername: data.authorUsername || '@user',
+          authorPhotoURL: data.authorPhotoURL || '',
+          likesCount: data.likesCount || 0,
+          likedBy: Array.isArray(data.likedBy) ? data.likedBy : [],
+          isStory: data.isStory !== undefined ? data.isStory : true,
+          isStoryOnly: !!data.isStoryOnly,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Sort by createdAt descending
+      posts.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || 0;
+        const timeB = b.createdAt?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+
+      return posts;
+    })();
+
+    const posts = await withTimeout(fetchPromise, 2500, [] as ElephantPost[]);
+
+    if (posts && posts.length > 0) {
+      try {
+        localStorage.setItem(CACHE_POSTS_KEY, JSON.stringify(posts));
+      } catch (e) {}
+      return posts;
     }
 
-    const posts: ElephantPost[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      posts.push({
-        id: docSnap.id,
-        elephantId: data.elephantId,
-        elephantName: data.elephantName || 'Unknown Elephant',
-        elephantSinhalaName: data.elephantSinhalaName || '',
-        photoUrl: data.photoUrl,
-        caption: data.caption || '',
-        authorUid: data.authorUid || '',
-        authorName: data.authorName || 'Anonymous',
-        authorUsername: data.authorUsername || '@user',
-        authorPhotoURL: data.authorPhotoURL || '',
-        likesCount: data.likesCount || 0,
-        likedBy: Array.isArray(data.likedBy) ? data.likedBy : [],
-        isStory: data.isStory !== undefined ? data.isStory : true,
-        isStoryOnly: !!data.isStoryOnly,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-      });
-    });
+    try {
+      const cached = localStorage.getItem(CACHE_POSTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
 
-    // Sort by createdAt descending
-    posts.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis?.() || 0;
-      const timeB = b.createdAt?.toMillis?.() || 0;
-      return timeB - timeA;
-    });
-
-    return posts;
+    return [];
   } catch (error) {
     console.warn('Error fetching all elephant posts:', error);
+    try {
+      const cached = localStorage.getItem(CACHE_POSTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
     return [];
   }
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Elephant, CulturalEvent, ElephantPost } from './types/elephant';
+import { INITIAL_VERIFIED_ELEPHANTS } from './data/initialVerifiedData';
 import {
   getElephants,
   addElephant,
@@ -13,7 +14,8 @@ import {
   getCulturalEvents,
   addCulturalEvent,
   updateCulturalEvent,
-  deleteCulturalEvent
+  deleteCulturalEvent,
+  INITIAL_EVENTS
 } from './firebase/elephantService';
 import { getAllElephantPosts } from './firebase/postService';
 import { Navbar } from './components/Navbar';
@@ -29,10 +31,40 @@ import { Language, translations } from './utils/translations';
 import { CheckCircle2, Calendar, MapPin, Crown } from 'lucide-react';
 
 export default function App() {
-  const [elephants, setElephants] = useState<Elephant[]>([]);
-  const [events, setEvents] = useState<CulturalEvent[]>([]);
-  const [posts, setPosts] = useState<ElephantPost[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [elephants, setElephants] = useState<Elephant[]>(() => {
+    try {
+      const cached = localStorage.getItem('alimedia_cached_elephants');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_VERIFIED_ELEPHANTS;
+  });
+
+  const [events, setEvents] = useState<CulturalEvent[]>(() => {
+    try {
+      const cached = localStorage.getItem('alimedia_cached_events');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_EVENTS;
+  });
+
+  const [posts, setPosts] = useState<ElephantPost[]>(() => {
+    try {
+      const cached = localStorage.getItem('alimedia_cached_posts');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Tabs: 'home' | 'elephant' | 'notifications' | 'profile'
@@ -99,10 +131,9 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Load elephants, cultural events, and community posts from Cloud Firestore
+  // Load elephants, cultural events, and community posts from Cloud Firestore with zero blocking
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
       const [elephantData, eventData, postData] = await Promise.all([
         getElephants(),
@@ -110,37 +141,21 @@ export default function App() {
         getAllElephantPosts()
       ]);
 
-      // If Firestore is empty on initial run, automatically seed verified records
-      if (elephantData.length === 0) {
-        try {
-          setIsSeeding(true);
-          await seedInitialVerifiedData();
-          const refreshedElephants = await getElephants();
-          const refreshedEvents = await getCulturalEvents();
-          setElephants(refreshedElephants);
-          setEvents(refreshedEvents);
-          setPosts(postData);
-          showNotification(language === 'si' ? 'හීලෑ අලි වාර්තා සාර්ථකව සම්බන්ධ කෙරිණි!' : 'Verified records loaded!');
-        } catch (seedErr: any) {
-          console.warn('Auto-seed fallback:', seedErr);
-          setElephants([]);
-          setEvents(eventData);
-          setPosts(postData);
-        } finally {
-          setIsSeeding(false);
-        }
-      } else {
+      if (elephantData && elephantData.length > 0) {
         setElephants(elephantData);
+      }
+      if (eventData && eventData.length > 0) {
         setEvents(eventData);
+      }
+      if (postData) {
         setPosts(postData);
       }
     } catch (err: any) {
-      console.error('Failed to load from Firestore:', err);
-      setError(err.message || 'Failed to connect to database');
+      console.warn('Data sync notice:', err);
     } finally {
       setLoading(false);
     }
-  }, [language]);
+  }, []);
 
   useEffect(() => {
     loadData();

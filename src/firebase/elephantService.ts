@@ -21,11 +21,23 @@ const EVENTS_COLLECTION = 'cultural_events';
 const POSTS_COLLECTION = 'elephant_posts';
 const USERS_COLLECTION = 'users';
 
+const CACHE_ELEPHANTS_KEY = 'alimedia_cached_elephants';
+const CACHE_EVENTS_KEY = 'alimedia_cached_events';
+
+// Timeout helper to avoid infinite hanging when network or firestore rules are unreachable
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs))
+  ]);
+}
+
 /**
  * Initial default cultural events / perahera updates
  */
 export const INITIAL_EVENTS: CulturalEvent[] = [
   {
+    id: "kandy-esala-2024",
     title: "Kandy Esala Perahera 2024 (මහනුවර ඇසළ මහා පෙරහැර)",
     sinhalaTitle: "මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය",
     description: "The Grand Pageant of Sri Lanka carrying the sacred tooth relic casket. Chief ceremonial tuskers leading the Maligawa procession.",
@@ -36,6 +48,7 @@ export const INITIAL_EVENTS: CulturalEvent[] = [
     isActive: true
   },
   {
+    id: "kelaniya-duruthu-2025",
     title: "Kelaniya Duruthu Maha Perahera (කැලණිය දුරුතු පෙරහැර)",
     sinhalaTitle: "කැලණිය රජ මහා විහාර දුරුතු මහා පෙරහැර",
     description: "Historic annual religious pageant celebrating the Buddha's visit to Kelaniya Raja Maha Vihara.",
@@ -46,6 +59,7 @@ export const INITIAL_EVENTS: CulturalEvent[] = [
     isActive: true
   },
   {
+    id: "bellanwila-esala-2024",
     title: "Bellanwila Esala Perahera (බෙල්ලන්විල ඇසළ පෙරහැර)",
     sinhalaTitle: "බෙල්ලන්විල රජ මහා විහාර ඇසළ පෙරහැර",
     description: "Traditional Colombo cultural festival with leading domesticated tuskers and elephants.",
@@ -58,53 +72,87 @@ export const INITIAL_EVENTS: CulturalEvent[] = [
 ];
 
 /**
- * Fetch all elephants from Cloud Firestore.
+ * Fetch all elephants from Cloud Firestore with instant fallback so the app NEVER gets stuck.
  */
 export async function getElephants(): Promise<Elephant[]> {
   try {
-    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
-    const q = query(elephantsCol);
-    const snapshot = await getDocs(q);
+    const fetchPromise = (async () => {
+      const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+      const q = query(elephantsCol);
+      const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
-      return [];
+      if (snapshot.empty) {
+        return [];
+      }
+
+      const list: Elephant[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          name: data.name || 'Unnamed Elephant',
+          sinhalaName: data.sinhalaName || '',
+          otherNames: Array.isArray(data.otherNames) ? data.otherNames : [],
+          gender: data.gender || 'male',
+          type: data.type || 'elephant',
+          dateOfBirth: data.dateOfBirth || '',
+          age: data.age !== undefined && data.age !== null ? data.age : '',
+          location: data.location || '',
+          organization: data.organization || '',
+          mahout: data.mahout || '',
+          tusks: data.tusks || '',
+          physicalCharacteristics: data.physicalCharacteristics || '',
+          description: data.description || '',
+          peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
+          photos: Array.isArray(data.photos) ? data.photos : [],
+          sources: Array.isArray(data.sources) ? data.sources : [],
+          verified: data.verified !== undefined ? Boolean(data.verified) : true,
+          status: data.status || 'living',
+          isFeatured: Boolean(data.isFeatured),
+          isLive: Boolean(data.isLive),
+          customBadge: data.customBadge || '',
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      return list;
+    })();
+
+    const list = await withTimeout(fetchPromise, 2500, [] as Elephant[]);
+
+    if (list && list.length > 0) {
+      try {
+        localStorage.setItem(CACHE_ELEPHANTS_KEY, JSON.stringify(list));
+      } catch (e) {}
+      return list;
     }
 
-    const list: Elephant[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      list.push({
-        id: docSnap.id,
-        name: data.name || 'Unnamed Elephant',
-        sinhalaName: data.sinhalaName || '',
-        otherNames: Array.isArray(data.otherNames) ? data.otherNames : [],
-        gender: data.gender || 'male',
-        type: data.type || 'elephant',
-        dateOfBirth: data.dateOfBirth || '',
-        age: data.age !== undefined && data.age !== null ? data.age : '',
-        location: data.location || '',
-        organization: data.organization || '',
-        mahout: data.mahout || '',
-        tusks: data.tusks || '',
-        physicalCharacteristics: data.physicalCharacteristics || '',
-        description: data.description || '',
-        peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
-        photos: Array.isArray(data.photos) ? data.photos : [],
-        sources: Array.isArray(data.sources) ? data.sources : [],
-        verified: data.verified !== undefined ? Boolean(data.verified) : true,
-        status: data.status || 'living',
-        isFeatured: Boolean(data.isFeatured),
-        isLive: Boolean(data.isLive),
-        customBadge: data.customBadge || '',
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-      });
-    });
+    // Check cached data if Firestore returned empty or timed out
+    try {
+      const cached = localStorage.getItem(CACHE_ELEPHANTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
 
-    return list;
+    // Fallback to verified Sri Lankan initial data
+    return INITIAL_VERIFIED_ELEPHANTS;
   } catch (error) {
-    console.error('Error fetching elephants from Firestore:', error);
-    throw error;
+    console.warn('Firestore elephant query fallback active:', error);
+    try {
+      const cached = localStorage.getItem(CACHE_ELEPHANTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return INITIAL_VERIFIED_ELEPHANTS;
   }
 }
 
@@ -398,31 +446,63 @@ export async function seedInitialVerifiedData(): Promise<number> {
 
 export async function getCulturalEvents(): Promise<CulturalEvent[]> {
   try {
-    const eventsCol = collection(db, EVENTS_COLLECTION);
-    const snapshot = await getDocs(eventsCol);
-    if (snapshot.empty) {
-      return INITIAL_EVENTS;
-    }
-    const events: CulturalEvent[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      events.push({
-        id: docSnap.id,
-        title: data.title || '',
-        sinhalaTitle: data.sinhalaTitle || '',
-        description: data.description || '',
-        location: data.location || '',
-        date: data.date || '',
-        type: data.type || 'perahera',
-        participatingElephants: Array.isArray(data.participatingElephants) ? data.participatingElephants : [],
-        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
+    const fetchPromise = (async () => {
+      const eventsCol = collection(db, EVENTS_COLLECTION);
+      const snapshot = await getDocs(eventsCol);
+      if (snapshot.empty) {
+        return [];
+      }
+      const events: CulturalEvent[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        events.push({
+          id: docSnap.id,
+          title: data.title || '',
+          sinhalaTitle: data.sinhalaTitle || '',
+          description: data.description || '',
+          location: data.location || '',
+          date: data.date || '',
+          type: data.type || 'perahera',
+          participatingElephants: Array.isArray(data.participatingElephants) ? data.participatingElephants : [],
+          isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
       });
-    });
-    return events;
+      return events;
+    })();
+
+    const events = await withTimeout(fetchPromise, 2500, [] as CulturalEvent[]);
+
+    if (events && events.length > 0) {
+      try {
+        localStorage.setItem(CACHE_EVENTS_KEY, JSON.stringify(events));
+      } catch (e) {}
+      return events;
+    }
+
+    try {
+      const cached = localStorage.getItem(CACHE_EVENTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    return INITIAL_EVENTS;
   } catch (error) {
     console.warn('Error fetching events, returning defaults:', error);
+    try {
+      const cached = localStorage.getItem(CACHE_EVENTS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
     return INITIAL_EVENTS;
   }
 }

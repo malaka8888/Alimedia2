@@ -2,6 +2,7 @@ import { Elephant } from '../types/elephant';
 
 export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
   {
+    id: "indiraja",
     name: "Indiraja",
     sinhalaName: "ඉන්දිරාජා",
     otherNames: ["Indi Raja", "Maligawa Indiraja"],
@@ -45,6 +46,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "myan-kumara",
     name: "Myan Kumara",
     sinhalaName: "මියන් කුමාර",
     otherNames: ["Myanmar Kumara", "Burma Raja"],
@@ -81,6 +83,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "vasana",
     name: "Vasana",
     sinhalaName: "වාසනා",
     otherNames: ["Kataragama Vasana", "Ruhunu Vasana"],
@@ -115,6 +118,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "kandula",
     name: "Kandula",
     sinhalaName: "කණ්ඩුල",
     otherNames: ["Kelaniya Kandula", "Kelani Raja"],
@@ -149,6 +153,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "sama",
     name: "Sama",
     sinhalaName: "සාමා",
     otherNames: ["Pinnawala Sama"],
@@ -179,6 +184,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "abhaya",
     name: "Abhaya",
     sinhalaName: "අභය",
     otherNames: ["Bellanwila Abhaya"],
@@ -211,6 +217,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "living"
   },
   {
+    id: "nadungamuwa-raja",
     name: "Nadungamuwa Raja",
     sinhalaName: "නැදුන්ගමුවේ රාජා",
     otherNames: ["Nadungamuwa Vijaya Raja", "The Gentle Giant of Asia"],
@@ -251,6 +258,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     status: "memorial"
   },
   {
+    id: "singithi",
     name: "Singithi",
     sinhalaName: "සිඟිති",
     otherNames: ["Singithi Elephant"],
