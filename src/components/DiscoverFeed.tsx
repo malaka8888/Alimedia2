@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Elephant, ElephantPost } from '../types/elephant';
 import {
   Heart,
@@ -17,6 +17,8 @@ import {
 import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 import { StoryViewerModal, StoryItem, ElephantStoryGroup } from './StoryViewerModal';
+import { ElephantHeartPop } from './ElephantHeartPop';
+import { toggleLikeElephantPost } from '../firebase/postService';
 
 interface DiscoverFeedProps {
   elephants: Elephant[];
@@ -40,14 +42,36 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   onOpenDirectory,
 }) => {
   const t = translations[language];
-  const { isFollowing, toggleFollowElephant } = useAuth();
+  const { user, isFollowing, toggleFollowElephant } = useAuth();
   const [likes, setLikes] = useState<{ [id: string]: number }>({});
   const [userLiked, setUserLiked] = useState<{ [id: string]: boolean }>({});
   const [savedPosts, setSavedPosts] = useState<{ [id: string]: boolean }>({});
   const [expandedCaptions, setExpandedCaptions] = useState<{ [id: string]: boolean }>({});
-
-  // Story Viewer Modal State (Grouped by Elephant)
+  const [heartAnims, setHeartAnims] = useState<{ [id: string]: { show: boolean; pos?: { x: number; y: number } } }>({});
   const [activeStoryGroupIndex, setActiveStoryGroupIndex] = useState<number | null>(null);
+
+  const lastTapRef = useRef<{ [id: string]: number }>({});
+
+  const getEffectiveUid = (): string => {
+    if (user?.uid) return user.uid;
+    try {
+      let saved = localStorage.getItem('alimedia_client_uid');
+      if (!saved) {
+        saved = 'guest_' + Math.random().toString(36).substring(2, 12);
+        localStorage.setItem('alimedia_client_uid', saved);
+      }
+      return saved;
+    } catch {
+      return 'guest_anon';
+    }
+  };
+
+  const triggerHeartAnimation = (id: string, pos?: { x: number; y: number }) => {
+    setHeartAnims((prev) => ({ ...prev, [id]: { show: true, pos } }));
+    setTimeout(() => {
+      setHeartAnims((prev) => ({ ...prev, [id]: { show: false } }));
+    }, 950);
+  };
 
   const notify = (msg: string) => {
     if (onShowNotification) {
@@ -55,15 +79,97 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     }
   };
 
-  const handleLike = (id: string, initialCount: number = 142) => {
-    setUserLiked((prev) => {
-      const isCurrentlyLiked = !prev[id];
-      setLikes((likePrev) => {
-        const current = likePrev[id] !== undefined ? likePrev[id] : initialCount;
-        return { ...likePrev, [id]: isCurrentlyLiked ? current + 1 : Math.max(0, current - 1) };
-      });
-      return { ...prev, [id]: isCurrentlyLiked };
+  const handleLike = async (id: string, initialCount: number = 0, isPost = true) => {
+    const effectiveUid = getEffectiveUid();
+    const postItem = isPost ? posts.find((p) => p.id === id) : null;
+    const isCurrentlyLiked = userLiked[id] !== undefined
+      ? userLiked[id]
+      : (postItem?.likedBy?.includes(effectiveUid) || false);
+
+    const nextLiked = !isCurrentlyLiked;
+
+    setUserLiked((prev) => ({ ...prev, [id]: nextLiked }));
+    setLikes((likePrev) => {
+      const current = likePrev[id] !== undefined ? likePrev[id] : (postItem?.likesCount ?? initialCount);
+      return { ...likePrev, [id]: nextLiked ? current + 1 : Math.max(0, current - 1) };
     });
+
+    if (nextLiked) {
+      triggerHeartAnimation(id);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(25); } catch {}
+      }
+    }
+
+    if (isPost) {
+      try {
+        await toggleLikeElephantPost(id, effectiveUid, false);
+      } catch (err) {
+        console.warn('Like toggle sync error:', err);
+      }
+    }
+  };
+
+  const handlePostDoubleClick = async (
+    e: React.MouseEvent | React.TouchEvent,
+    id: string,
+    initialCount: number = 0,
+    isPost = true
+  ) => {
+    e.stopPropagation();
+    const effectiveUid = getEffectiveUid();
+    const postItem = isPost ? posts.find((p) => p.id === id) : null;
+
+    let pos: { x: number; y: number } | undefined = undefined;
+    if ('clientX' in e && e.currentTarget) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    // Trigger visual pop animation
+    triggerHeartAnimation(id, pos);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([35, 20]); } catch {}
+    }
+
+    const isCurrentlyLiked = userLiked[id] !== undefined
+      ? userLiked[id]
+      : (postItem?.likedBy?.includes(effectiveUid) || false);
+
+    // If not liked yet, like it and increment count! If already liked, stays liked and animates
+    if (!isCurrentlyLiked) {
+      setUserLiked((prev) => ({ ...prev, [id]: true }));
+      setLikes((likePrev) => {
+        const current = likePrev[id] !== undefined ? likePrev[id] : (postItem?.likesCount ?? initialCount);
+        return { ...likePrev, [id]: current + 1 };
+      });
+
+      if (isPost) {
+        try {
+          await toggleLikeElephantPost(id, effectiveUid, true);
+        } catch (err) {
+          console.warn('Double click like sync error:', err);
+        }
+      }
+    }
+  };
+
+  const handleTouchEndImage = (
+    e: React.TouchEvent,
+    id: string,
+    initialCount: number = 0,
+    isPost = true
+  ) => {
+    const now = Date.now();
+    const last = lastTapRef.current[id] || 0;
+    if (now - last < 350) {
+      // Double tap detected!
+      handlePostDoubleClick(e, id, initialCount, isPost);
+      lastTapRef.current[id] = 0;
+    } else {
+      lastTapRef.current[id] = now;
+    }
   };
 
   const handleBookmark = (id: string, name: string) => {
@@ -384,8 +490,11 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           {feedPosts.map((post) => {
             const postId = post.id || `post-${Math.random()}`;
             const linkedElephant = elephants.find((e) => e.id === post.elephantId || e.name === post.elephantName);
-            const isLiked = !!userLiked[postId];
-            const currentLikes = likes[postId] !== undefined ? likes[postId] : (post.likesCount || 18);
+            const effectiveUid = getEffectiveUid();
+            const isLiked = userLiked[postId] !== undefined
+              ? userLiked[postId]
+              : (post.likedBy?.includes(effectiveUid) || false);
+            const currentLikes = likes[postId] !== undefined ? likes[postId] : (post.likesCount || 0);
             const isSaved = !!savedPosts[postId];
             const isExpanded = !!expandedCaptions[postId];
             const captionText = post.caption || '';
@@ -470,15 +579,23 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   )}
                 </div>
 
-                {/* 2. Clear Image View */}
+                {/* 2. Photo View with Double Tap/Click to Like + Glowing Elephant Heart */}
                 <div
+                  onDoubleClick={(e) => handlePostDoubleClick(e, postId, post.likesCount || 0, true)}
+                  onTouchEnd={(e) => handleTouchEndImage(e, postId, post.likesCount || 0, true)}
                   onClick={() => onSelectPhoto ? onSelectPhoto(post.photoUrl) : (linkedElephant && onSelectElephant(linkedElephant))}
-                  className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group"
+                  className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group select-none"
                 >
                   <img
                     src={post.photoUrl}
                     alt={post.caption || post.elephantName}
-                    className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
+                    className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300 pointer-events-none"
+                  />
+
+                  {/* Animated Glowing Elephant Heart on Double Click */}
+                  <ElephantHeartPop
+                    show={!!heartAnims[postId]?.show}
+                    position={heartAnims[postId]?.pos}
                   />
                 </div>
 
@@ -487,15 +604,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   <div className="flex items-center gap-3 text-zinc-700 dark:text-zinc-300">
                     {/* LIKE BUTTON */}
                     <button
-                      onClick={() => handleLike(postId, post.likesCount || 18)}
-                      className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full transition-all cursor-pointer ${
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLike(postId, post.likesCount || 0, true);
+                      }}
+                      className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full transition-all cursor-pointer select-none active:scale-95 ${
                         isLiked
                           ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400'
                           : 'bg-zinc-100/70 hover:bg-zinc-100 dark:bg-zinc-800/80 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
                       }`}
                     >
                       <Heart
-                        className={`w-4 h-4 transition-transform active:scale-125 ${
+                        className={`w-4 h-4 transition-transform ${
                           isLiked ? 'fill-red-500 text-red-500 scale-110' : 'stroke-[2]'
                         }`}
                       />
@@ -596,9 +716,11 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
         {elephants.map((elephant, index) => {
           const elephantId = elephant.id || `el-${index}`;
           const isTusker = elephant.type === 'tusker';
-          const defaultLikes = 150 + (index * 47) % 320;
-          const currentLikes = likes[elephantId] !== undefined ? likes[elephantId] : defaultLikes;
-          const isLiked = !!userLiked[elephantId];
+          const effectiveUid = getEffectiveUid();
+          const isLiked = userLiked[elephantId] !== undefined
+            ? userLiked[elephantId]
+            : (elephant.likedBy?.includes(effectiveUid) || false);
+          const currentLikes = likes[elephantId] !== undefined ? likes[elephantId] : (elephant.likesCount || 0);
           const isSaved = !!savedPosts[elephantId];
           const following = elephant.id ? isFollowing(elephant.id) : false;
           const isExpanded = !!expandedCaptions[elephantId];
@@ -683,18 +805,26 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 )}
               </div>
 
-              {/* 2. Photo View */}
+              {/* 2. Photo View with Double Tap/Click to Like + Glowing Elephant Heart */}
               <div
+                onDoubleClick={(e) => handlePostDoubleClick(e, elephantId, elephant.likesCount || 0, false)}
+                onTouchEnd={(e) => handleTouchEndImage(e, elephantId, elephant.likesCount || 0, false)}
                 onClick={() => onSelectPhoto ? onSelectPhoto(postImage) : onSelectElephant(elephant)}
-                className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group"
+                className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-inner group select-none"
               >
                 <img
                   src={postImage}
                   alt={elephant.name}
-                  className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300 pointer-events-none"
                 />
 
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                {/* Animated Glowing Elephant Heart on Double Click */}
+                <ElephantHeartPop
+                  show={!!heartAnims[elephantId]?.show}
+                  position={heartAnims[elephantId]?.pos}
+                />
+
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 pointer-events-none">
                   <span
                     className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-xs ${
                       isTusker
@@ -712,15 +842,18 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 <div className="flex items-center gap-3 text-zinc-700 dark:text-zinc-300">
                   {/* LIKE BUTTON */}
                   <button
-                    onClick={() => handleLike(elephantId, defaultLikes)}
-                    className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full transition-all cursor-pointer ${
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLike(elephantId, elephant.likesCount || 0, false);
+                    }}
+                    className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full transition-all cursor-pointer select-none active:scale-95 ${
                       isLiked
                         ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400'
                         : 'bg-zinc-100/70 hover:bg-zinc-100 dark:bg-zinc-800/80 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
                     }`}
                   >
                     <Heart
-                      className={`w-4 h-4 transition-transform active:scale-125 ${
+                      className={`w-4 h-4 transition-transform ${
                         isLiked ? 'fill-red-500 text-red-500 scale-110' : 'stroke-[2]'
                       }`}
                     />

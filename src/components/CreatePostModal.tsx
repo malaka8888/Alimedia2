@@ -139,7 +139,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         authorName: finalAuthorName,
         authorUsername: finalAuthorUsername,
         authorPhotoURL: finalAuthorPhoto,
-        likesCount: 1,
+        likesCount: 0,
+        likedBy: [],
         isStory: autoShareStory || isStoryOnly,
         isStoryOnly: isStoryOnly,
       };

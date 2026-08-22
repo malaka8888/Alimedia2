@@ -12,7 +12,7 @@ export const INITIAL_POSTS: ElephantPost[] = [
     authorName: "Malaka Fernando",
     authorUsername: "@malaka",
     authorPhotoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
-    likesCount: 12,
+    likesCount: 0,
     likedBy: [],
     isStory: true,
     isStoryOnly: false
@@ -28,7 +28,7 @@ export const INITIAL_POSTS: ElephantPost[] = [
     authorName: "AliMedia Archival Team",
     authorUsername: "@alimedia",
     authorPhotoURL: "",
-    likesCount: 28,
+    likesCount: 0,
     likedBy: [],
     isStory: true,
     isStoryOnly: false

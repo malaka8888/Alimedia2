@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Elephant } from '../types/elephant';
 import {
   X,
@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { Language, translations, formatBilingualElephantName } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
+import { ElephantHeartPop } from './ElephantHeartPop';
+import { toggleLikeElephantPost } from '../firebase/postService';
 
 export interface StoryItem {
   id: string;
@@ -33,6 +35,7 @@ export interface StoryItem {
   linkedElephant?: Elephant;
   isFollowed?: boolean;
   isTusker?: boolean;
+  likesCount?: number;
 }
 
 export interface ElephantStoryGroup {
@@ -125,10 +128,35 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [progress, setProgress] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [imgError, setImgError] = useState<{ [id: string]: boolean }>({});
+  const [heartAnim, setHeartAnim] = useState<{ show: boolean; pos?: { x: number; y: number } }>({ show: false });
+
+  const { user } = useAuth();
+  const lastTapRef = useRef<number>(0);
+
+  const getEffectiveUid = (): string => {
+    if (user?.uid) return user.uid;
+    try {
+      let saved = localStorage.getItem('alimedia_client_uid');
+      if (!saved) {
+        saved = 'guest_' + Math.random().toString(36).substring(2, 12);
+        localStorage.setItem('alimedia_client_uid', saved);
+      }
+      return saved;
+    } catch {
+      return 'guest_anon';
+    }
+  };
 
   const currentGroup = normalizedGroups[currentGroupIdx];
   const groupStories = currentGroup?.stories || [];
   const currentStory = groupStories[currentSegmentIdx] || groupStories[0];
+
+  const triggerHeartAnimation = (pos?: { x: number; y: number }) => {
+    setHeartAnim({ show: true, pos });
+    setTimeout(() => {
+      setHeartAnim({ show: false });
+    }, 950);
+  };
 
   // Navigate to Next Segment or Next Elephant Group or Auto-Close to Home
   const handleNext = useCallback(() => {
@@ -210,23 +238,73 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   const elephantId = currentGroup.elephantId || currentStory.elephantId;
   const followingThisElephant = elephantId ? isFollowing(elephantId) : false;
-  const isLiked = !!userLiked[currentStory.id];
-  const likeCount = likes[currentStory.id] !== undefined ? likes[currentStory.id] : 34;
+  const effectiveUid = getEffectiveUid();
+  const isLiked = userLiked[currentStory.id] !== undefined
+    ? userLiked[currentStory.id]
+    : false;
+  const likeCount = likes[currentStory.id] !== undefined
+    ? likes[currentStory.id]
+    : (currentStory.likesCount || 0);
   const isSaved = !!savedStories[currentStory.id];
   const imageSrc =
     !imgError[currentStory.id] && currentStory.photoUrl
       ? currentStory.photoUrl
       : FALLBACK_STORY_IMAGE;
 
-  const handleLike = () => {
-    setUserLiked((prev) => {
-      const liked = !prev[currentStory.id];
-      setLikes((lp) => {
-        const count = lp[currentStory.id] !== undefined ? lp[currentStory.id] : 34;
-        return { ...lp, [currentStory.id]: liked ? count + 1 : Math.max(0, count - 1) };
-      });
-      return { ...prev, [currentStory.id]: liked };
+  const handleLike = async () => {
+    const nextLiked = !isLiked;
+    setUserLiked((prev) => ({ ...prev, [currentStory.id]: nextLiked }));
+    setLikes((lp) => {
+      const count = lp[currentStory.id] !== undefined ? lp[currentStory.id] : (currentStory.likesCount || 0);
+      return { ...lp, [currentStory.id]: nextLiked ? count + 1 : Math.max(0, count - 1) };
     });
+
+    if (nextLiked) {
+      triggerHeartAnimation();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(25); } catch {}
+      }
+    }
+
+    try {
+      await toggleLikeElephantPost(currentStory.id, effectiveUid, false);
+    } catch (err) {}
+  };
+
+  const handleDoubleClickStory = async (e: React.MouseEvent | React.TouchEvent) => {
+    let pos: { x: number; y: number } | undefined = undefined;
+    if ('clientX' in e && e.currentTarget) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    triggerHeartAnimation(pos);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([35, 20]); } catch {}
+    }
+
+    if (!isLiked) {
+      setUserLiked((prev) => ({ ...prev, [currentStory.id]: true }));
+      setLikes((lp) => {
+        const count = lp[currentStory.id] !== undefined ? lp[currentStory.id] : (currentStory.likesCount || 0);
+        return { ...lp, [currentStory.id]: count + 1 };
+      });
+
+      try {
+        await toggleLikeElephantPost(currentStory.id, effectiveUid, true);
+      } catch (err) {}
+    }
+  };
+
+  const handleTouchEndStory = (e: React.TouchEvent) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 350) {
+      handleDoubleClickStory(e);
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
   };
 
   const handleBookmark = () => {
@@ -302,16 +380,23 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         onTouchStart={() => setIsPaused(true)}
         onTouchEnd={() => setIsPaused(false)}
       >
-        {/* Background Fullscreen Image */}
-        <div className="absolute inset-0 z-0">
+        {/* Background Fullscreen Image with Double-Click / Double-Tap to Like */}
+        <div
+          onDoubleClick={handleDoubleClickStory}
+          onTouchEnd={handleTouchEndStory}
+          className="absolute inset-0 z-0 select-none cursor-pointer"
+        >
           <img
             src={imageSrc}
             alt={currentGroup.elephantName}
             onError={() => setImgError((prev) => ({ ...prev, [currentStory.id]: true }))}
-            className="w-full h-full object-cover transition-opacity duration-300"
+            className="w-full h-full object-cover transition-opacity duration-300 pointer-events-none"
           />
           {/* Subtle Top & Bottom dark gradients for text readability */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/15 to-black/90 pointer-events-none" />
+
+          {/* Animated Glowing Elephant Heart */}
+          <ElephantHeartPop show={heartAnim.show} position={heartAnim.pos} />
         </div>
 
         {/* Top Controls & Segment Progress Bars */}

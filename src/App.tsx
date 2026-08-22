@@ -56,6 +56,12 @@ export default function App() {
 
   const [posts, setPosts] = useState<ElephantPost[]>(() => {
     try {
+      const resetDone = localStorage.getItem('alimedia_likes_zero_reset');
+      if (!resetDone) {
+        localStorage.removeItem('alimedia_cached_posts');
+        localStorage.setItem('alimedia_likes_zero_reset', 'true');
+        return INITIAL_POSTS;
+      }
       const cached = localStorage.getItem('alimedia_cached_posts');
       if (cached) {
         const parsed = JSON.parse(cached);
