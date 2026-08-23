@@ -30,14 +30,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const userPhoto = profile?.photoURL || user?.photoURL;
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FAF9F5]/95 dark:bg-[#0B1411]/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-emerald-950/70 transition-colors">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-white/10 transition-colors">
       <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Brand Logo */}
         <div
           onClick={() => onSelectTab('home')}
           className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <div className="w-9 h-9 rounded-xl overflow-hidden shadow-xs flex items-center justify-center bg-white dark:bg-[#121F1B] border border-zinc-200/80 dark:border-emerald-900/40 group-hover:scale-105 transition-transform">
+          <div className="w-8 h-8 rounded-lg overflow-hidden shadow-xs flex items-center justify-center bg-white dark:bg-black border border-zinc-200 dark:border-white/15 group-hover:scale-105 transition-transform">
             <img
               src={LOGO_URL}
               alt="අලිMedia Logo"
@@ -46,32 +46,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
-              <span className="font-extrabold text-lg tracking-tight text-[#062E22] dark:text-emerald-100 group-hover:text-emerald-800 dark:group-hover:text-emerald-300 transition-colors">
-                අලි<span className="text-emerald-600 dark:text-amber-400 font-black">Media</span>
+              <span className="font-bold text-lg tracking-tight text-[#062E22] dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+                අලි<span className="text-black dark:text-white font-extrabold">Media</span>
               </span>
-              <span className="w-1.5 h-1.5 bg-emerald-500 dark:bg-amber-400 rounded-full" />
+              <span className="w-1.5 h-1.5 bg-[#062E22] dark:bg-white rounded-full" />
             </div>
           </div>
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden sm:flex items-center gap-1 bg-white dark:bg-[#121F1B] p-1 rounded-full border border-zinc-200 dark:border-emerald-950 shadow-2xs">
+        <nav className="hidden sm:flex items-center gap-1 bg-zinc-100 dark:bg-black p-1 rounded-full border border-zinc-200 dark:border-white/10 shadow-2xs">
           <button
             onClick={() => onSelectTab('home')}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               currentTab === 'home'
-                ? 'bg-[#062E22] text-white dark:bg-emerald-600 dark:text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-black dark:hover:text-white'
             }`}
           >
-            {language === 'si' ? 'මුල් පිටුව (Feed)' : 'Feed'}
+            {language === 'si' ? 'Feed' : 'Feed'}
           </button>
           <button
             onClick={() => onSelectTab('elephant')}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               currentTab === 'elephant'
-                ? 'bg-[#062E22] text-white dark:bg-emerald-600 dark:text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-black dark:hover:text-white'
             }`}
           >
             <ElephantIcon className="w-3.5 h-3.5" />

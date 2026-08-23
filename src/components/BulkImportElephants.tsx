@@ -342,6 +342,12 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
         targetSheet = wb.Sheets[wb.SheetNames[0]];
       }
 
+      if (!targetSheet) {
+        alert(language === 'si' ? 'Excel ගොනුවේ කිසිදු වලංගු Sheet එකක් හමු නොවීය.' : 'No valid sheet found in workbook.');
+        setIsParsing(false);
+        return;
+      }
+
       const rawData: Record<string, any>[] = XLSX.utils.sheet_to_json(targetSheet, {
         defval: '',
         raw: false,
@@ -600,11 +606,13 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
     setImportLogs([]);
 
     const reader = new FileReader();
+    
+    // Tier 1: Read as ArrayBuffer (Modern standard for .xlsx)
     reader.onload = (evt) => {
       try {
         const buffer = evt.target?.result as ArrayBuffer;
         if (!buffer) {
-          throw new Error('Could not read file data');
+          throw new Error('Could not read file data as ArrayBuffer');
         }
         const data = new Uint8Array(buffer);
         const wb = XLSX.read(data, {
@@ -614,24 +622,76 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
         });
         processWorkbook(wb);
       } catch (err: any) {
-        console.warn('ArrayBuffer read failed, trying text fallback:', err);
+        console.warn('ArrayBuffer read failed, trying Tier 2 (binary string)...', err);
+        
+        // Tier 2 Fallback: Read as Binary String (Extremely reliable for legacy browsers and multi-format)
         try {
-          const textReader = new FileReader();
-          textReader.onload = (tEvt) => {
-            const text = tEvt.target?.result as string;
-            const wb = XLSX.read(text, { type: 'string' });
-            processWorkbook(wb);
+          const binaryReader = new FileReader();
+          binaryReader.onload = (binEvt) => {
+            try {
+              const binData = binEvt.target?.result;
+              if (!binData) {
+                throw new Error('Could not read file data as BinaryString');
+              }
+              const wb = XLSX.read(binData, {
+                type: 'binary',
+                cellDates: true,
+                raw: false,
+              });
+              processWorkbook(wb);
+            } catch (binErr: any) {
+              console.warn('Binary string read failed, trying Tier 3 (text string)...', binErr);
+              
+              // Tier 3 Fallback: Read as Text (Best for plain .csv files)
+              try {
+                const textReader = new FileReader();
+                textReader.onload = (textEvt) => {
+                  try {
+                    const textData = textEvt.target?.result as string;
+                    if (!textData) {
+                      throw new Error('Could not read file data as Text');
+                    }
+                    const wb = XLSX.read(textData, {
+                      type: 'string',
+                      cellDates: true,
+                      raw: false,
+                    });
+                    processWorkbook(wb);
+                  } catch (textErr: any) {
+                    console.error('All file reading strategies failed.', textErr);
+                    alert(
+                      language === 'si'
+                        ? `ගොනුව කියවීමට නොහැකි විය. කරුණාකර නිවැරදි Excel (.xlsx) හෝ CSV ගොනුවක් භාවිතා කරන්න. (Error: ${textErr.message || textErr})`
+                        : `Could not parse file. Please use a valid Excel (.xlsx) or CSV file. (Error: ${textErr.message || textErr})`
+                    );
+                    setIsParsing(false);
+                  }
+                };
+                textReader.onerror = () => {
+                  alert(language === 'si' ? 'ගොනුව කියවීම අසාර්ථක විය.' : 'Error reading file.');
+                  setIsParsing(false);
+                };
+                textReader.readAsText(selectedFile);
+              } catch (textSetupErr: any) {
+                alert(`Error: ${textSetupErr.message || textSetupErr}`);
+                setIsParsing(false);
+              }
+            }
           };
-          textReader.readAsText(selectedFile);
-        } catch (fallbackErr: any) {
-          alert(`Excel file parsing failed: ${err.message || err}`);
+          binaryReader.onerror = () => {
+            alert(language === 'si' ? 'ගොනුව කියවීම අසාර්ථක විය.' : 'Error reading file.');
+            setIsParsing(false);
+          };
+          binaryReader.readAsBinaryString(selectedFile);
+        } catch (binarySetupErr: any) {
+          alert(`Error: ${binarySetupErr.message || binarySetupErr}`);
           setIsParsing(false);
         }
       }
     };
 
     reader.onerror = () => {
-      alert('Error reading uploaded file.');
+      alert(language === 'si' ? 'ගොනුව කියවීම අසාර්ථක විය.' : 'Error reading file.');
       setIsParsing(false);
     };
 

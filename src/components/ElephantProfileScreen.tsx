@@ -107,10 +107,10 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   return (
     <div className="max-w-lg mx-auto w-full pb-28 animate-fadeIn">
       {/* Top Floating Control Bar */}
-      <div className="sticky top-14 z-30 bg-[#F7F8F4]/90 dark:bg-[#0A1411]/90 backdrop-blur-md py-2 px-1 flex items-center justify-between">
+      <div className="sticky top-14 z-30 bg-white/90 dark:bg-black/90 backdrop-blur-md py-2 px-1 flex items-center justify-between border-b border-zinc-200 dark:border-white/10">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#121F1B] text-[#062E22] dark:text-emerald-100 text-xs font-extrabold border border-zinc-200 dark:border-emerald-950/70 shadow-2xs hover:bg-zinc-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-black text-[#062E22] dark:text-white text-xs font-bold border border-zinc-200 dark:border-white/15 shadow-2xs hover:bg-zinc-50 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>{t.backToDirectory}</span>
@@ -119,7 +119,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleShare}
-            className="p-2 rounded-full bg-white dark:bg-[#121F1B] text-zinc-700 dark:text-zinc-200 hover:text-[#062E22] dark:hover:text-amber-300 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs cursor-pointer"
+            className="p-2 rounded-full bg-white dark:bg-black text-zinc-700 dark:text-white hover:text-[#062E22] border border-zinc-200 dark:border-white/15 shadow-2xs cursor-pointer"
             title={t.share}
           >
             <Share2 className="w-4 h-4" />
@@ -127,10 +127,10 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
 
           <button
             onClick={() => elephant.id && toggleFollowElephant(elephant.id)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
               following
-                ? 'bg-amber-400 text-zinc-950 hover:bg-amber-500'
-                : 'bg-[#062E22] text-white hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600'
+                ? 'bg-white text-black border border-zinc-300 dark:border-white/30 hover:bg-zinc-100'
+                : 'bg-[#062E22] text-white hover:bg-emerald-900'
             }`}
           >
             {following ? (
@@ -149,11 +149,11 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
       </div>
 
       {/* Main Profile Header Card */}
-      <div className="bg-white dark:bg-[#121F1B] rounded-3xl p-4 sm:p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-4 relative mt-2">
+      <div className="bg-white dark:bg-black rounded-3xl p-4 sm:p-5 border border-zinc-200 dark:border-white/10 shadow-2xs space-y-4 relative mt-2">
         {/* Cover Photo */}
         <div
           onClick={() => onSelectPhoto(heroPhoto)}
-          className="relative aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-zinc-900 cursor-pointer group shadow-inner"
+          className="relative aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-black cursor-pointer group shadow-inner"
         >
           <img
             src={heroPhoto}
@@ -166,17 +166,13 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
           <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span
-                className={`text-[11px] font-black px-2.5 py-0.5 rounded-full shadow-md backdrop-blur-md ${
-                  isTusker
-                    ? 'bg-amber-400 text-amber-950'
-                    : 'bg-emerald-700 text-white'
-                }`}
+                className="text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-md backdrop-blur-md bg-[#062E22] text-white"
               >
                 {isTusker ? t.tusker : t.elephant}
               </span>
 
               {isMemorial && (
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-zinc-900/90 text-amber-300 border border-amber-400/40">
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-black/90 text-white border border-white/10">
                   {t.memorial}
                 </span>
               )}
@@ -184,7 +180,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
 
             <div className="flex items-center gap-1">
               {elephant.verified && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600/90 text-white shadow-md backdrop-blur-md">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#062E22]/90 text-white shadow-md backdrop-blur-md">
                   <ShieldCheck className="w-3 h-3" />
                   <span>{t.verified}</span>
                 </span>
@@ -197,11 +193,11 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
 
           {/* Title on Hero Bottom */}
           <div className="absolute bottom-3 left-3 right-3 text-white">
-            <h1 className="text-2xl sm:text-3xl font-black drop-shadow-md tracking-tight leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold drop-shadow-md tracking-tight leading-tight">
               {primary}
             </h1>
             {secondary && (
-              <p className="text-base sm:text-lg font-bold text-amber-300 drop-shadow mt-0.5 font-sinhala">
+              <p className="text-base sm:text-lg font-bold text-zinc-300 drop-shadow mt-0.5 font-sinhala">
                 ({secondary})
               </p>
             )}
@@ -209,9 +205,9 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         </div>
 
         {/* Stats Row: Followers, Posts, Photos */}
-        <div className="grid grid-cols-3 gap-2 py-2 border-y border-zinc-100 dark:border-zinc-800 text-center">
+        <div className="grid grid-cols-3 gap-2 py-2 border-y border-zinc-100 dark:border-white/10 text-center">
           <div>
-            <div className="text-sm sm:text-base font-black text-[#062E22] dark:text-emerald-100">
+            <div className="text-sm sm:text-base font-bold text-[#062E22] dark:text-white">
               {followerCount >= 1000 ? `${(followerCount / 1000).toFixed(1)}K` : followerCount}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -219,8 +215,8 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
             </div>
           </div>
 
-          <div className="border-x border-zinc-100 dark:border-zinc-800">
-            <div className="text-sm sm:text-base font-black text-[#062E22] dark:text-emerald-100">
+          <div className="border-x border-zinc-100 dark:border-white/10">
+            <div className="text-sm sm:text-base font-bold text-[#062E22] dark:text-white">
               {allPhotos.length}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -229,7 +225,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
           </div>
 
           <div>
-            <div className="text-sm sm:text-base font-black text-emerald-700 dark:text-emerald-400">
+            <div className="text-sm sm:text-base font-bold text-[#062E22] dark:text-white">
               {elephant.category === 'temple' ? (language === 'si' ? 'විහාරස්ථ' : 'Temple') : (language === 'si' ? 'හීලෑ' : 'Domestic')}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -241,20 +237,20 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         {/* Location & Organization Quick Matrix */}
         <div className="space-y-2 text-xs text-zinc-600 dark:text-zinc-300">
           <div className="flex items-start gap-2">
-            <Building2 className="w-4 h-4 text-emerald-800 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <Building2 className="w-4 h-4 text-[#062E22] dark:text-white shrink-0 mt-0.5" />
             <span className="font-semibold text-zinc-800 dark:text-zinc-200">
               {elephant.organization || (language === 'si' ? 'විහාරස්ථානය / සංවිධානය සටහන්ව නැත' : 'Temple / Owner not specified')}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+            <MapPin className="w-4 h-4 text-[#062E22] dark:text-white shrink-0" />
             <span>{elephant.location || (language === 'si' ? 'ශ්‍රී ලංකාව' : 'Sri Lanka')}</span>
           </div>
 
           {elephant.mahout && (
             <div className="flex items-center gap-2">
-              <User className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0" />
+              <User className="w-4 h-4 text-[#062E22] dark:text-white shrink-0" />
               <span>{t.mahout}: <strong className="text-zinc-800 dark:text-zinc-200">{elephant.mahout}</strong></span>
             </div>
           )}
@@ -263,7 +259,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
         {/* Add Photo Button Action */}
         <button
           onClick={() => onOpenCreatePost(elephant.id)}
-          className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-extrabold text-xs flex items-center justify-center gap-2 border border-emerald-200/80 dark:border-emerald-800/40 transition-colors cursor-pointer"
+          className="w-full py-2.5 px-4 rounded-2xl bg-[#062E22] hover:bg-emerald-900 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>{t.addPhotoStory}</span>
@@ -271,7 +267,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
       </div>
 
       {/* Tabs Row */}
-      <div className="flex border-b border-zinc-200 dark:border-emerald-950/70 mt-4 bg-white dark:bg-[#121F1B] rounded-2xl p-1 shadow-2xs">
+      <div className="flex border-b border-zinc-200 dark:border-white/10 mt-4 bg-white dark:bg-black rounded-2xl p-1 shadow-2xs">
         {[
           { id: 'gallery', label: `${t.photoGallery} (${allPhotos.length})`, icon: Grid },
           { id: 'details', label: t.verifiedData, icon: Info },
@@ -285,7 +281,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1 rounded-xl transition-all cursor-pointer ${
                 activeTab === tab.id
-                  ? 'bg-[#062E22] text-white dark:bg-emerald-600 shadow-xs'
+                  ? 'bg-[#062E22] text-white shadow-xs'
                   : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-white'
               }`}
             >

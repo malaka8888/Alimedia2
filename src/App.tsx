@@ -382,11 +382,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F4] dark:bg-[#0A1411] text-[#062E22] dark:text-[#E2E8F0] flex flex-col font-sans antialiased selection:bg-emerald-200 transition-colors">
+    <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white flex flex-col font-sans antialiased selection:bg-emerald-900 transition-colors">
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] dark:bg-emerald-950 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-white/15">
+          <CheckCircle2 className="w-4 h-4 text-white" />
           <span>{notification}</span>
         </div>
       )}

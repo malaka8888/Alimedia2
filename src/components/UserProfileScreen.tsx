@@ -78,13 +78,10 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
     return (
       <div className="max-w-lg mx-auto w-full pb-24 animate-fadeIn space-y-5 pt-2">
         {/* Welcome Banner Card */}
-        <div className="bg-gradient-to-br from-[#062E22] via-[#0B4A37] to-[#041D15] rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden text-center space-y-4">
-          <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl" />
-          <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-amber-500/20 rounded-full blur-2xl" />
-
+        <div className="bg-[#062E22] rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden text-center space-y-4">
           {/* Elephant Media Avatar Illustration */}
-          <div className="relative mx-auto w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-amber-400 to-emerald-400 shadow-2xl flex items-center justify-center">
-            <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2">
+          <div className="relative mx-auto w-20 h-20 rounded-full p-1 bg-white/20 shadow-2xl flex items-center justify-center">
+            <div className="w-full h-full rounded-full bg-black flex items-center justify-center p-2">
               <img
                 src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
                 alt="Aliya Media"
@@ -94,10 +91,10 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           </div>
 
           <div className="space-y-1.5 relative z-10">
-            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
               {language === 'si' ? 'අලිMedia වෙත සාදරයෙන් පිළිගනිමු' : 'Welcome to Aliya Media'}
             </h2>
-            <p className="text-xs sm:text-sm text-emerald-100/90 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs sm:text-sm text-zinc-300 max-w-sm mx-auto leading-relaxed">
               {language === 'si'
                 ? 'ඔබගේ Gmail ගිණුමෙන් පිවිස ඔබ ප්‍රියකරන හීලෑ අලි සහ ඇතුන් Follow කර පුද්ගලික පැතිකඩක් (Profile) සාදාගන්න.'
                 : 'Sign in with your Google account to follow revered Sri Lankan elephants and build your personal profile.'}
@@ -109,7 +106,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             <button
               onClick={handleGoogleSignIn}
               disabled={isSigningIn}
-              className="w-full max-w-xs mx-auto py-3.5 px-6 rounded-2xl bg-white text-zinc-900 font-bold text-sm shadow-xl hover:bg-zinc-50 active:scale-98 transition-all flex items-center justify-center gap-3 cursor-pointer border border-zinc-200"
+              className="w-full max-w-xs mx-auto py-3.5 px-6 rounded-2xl bg-white text-black font-bold text-sm shadow-xl hover:bg-zinc-100 active:scale-98 transition-all flex items-center justify-center gap-3 cursor-pointer border border-zinc-200"
             >
               {isSigningIn ? (
                 <div className="w-5 h-5 border-2 border-emerald-800 border-t-transparent rounded-full animate-spin" />
@@ -149,11 +146,11 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
 
         {/* Feature Highlights Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white dark:bg-[#121F1B] p-4 rounded-2xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-1.5">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 flex items-center justify-center">
+          <div className="bg-white dark:bg-black p-4 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xs space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white flex items-center justify-center">
               <ElephantIcon className="w-4 h-4" />
             </div>
-            <h4 className="text-xs font-bold text-[#062E22] dark:text-emerald-100">
+            <h4 className="text-xs font-bold text-[#062E22] dark:text-white">
               {language === 'si' ? 'ඇතුන් Follow කරන්න' : 'Follow Elephants'}
             </h4>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">
@@ -161,11 +158,11 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             </p>
           </div>
 
-          <div className="bg-white dark:bg-[#121F1B] p-4 rounded-2xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-1.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 flex items-center justify-center">
+          <div className="bg-white dark:bg-black p-4 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xs space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white flex items-center justify-center">
               <Crown className="w-4 h-4" />
             </div>
-            <h4 className="text-xs font-bold text-[#062E22] dark:text-emerald-100">
+            <h4 className="text-xs font-bold text-[#062E22] dark:text-white">
               {language === 'si' ? 'Gmail Profile Avatar' : 'Gmail Profile Sync'}
             </h4>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">
@@ -173,11 +170,11 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             </p>
           </div>
 
-          <div className="bg-white dark:bg-[#121F1B] p-4 rounded-2xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-1.5">
-            <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 flex items-center justify-center">
+          <div className="bg-white dark:bg-black p-4 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xs space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
-            <h4 className="text-xs font-bold text-[#062E22] dark:text-emerald-100">
+            <h4 className="text-xs font-bold text-[#062E22] dark:text-white">
               {language === 'si' ? 'සත්‍යාපිත වාර්තා' : 'Verified Community'}
             </h4>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">
@@ -187,14 +184,14 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         </div>
 
         {/* Popular Elephants to Explore */}
-        <div className="bg-white dark:bg-[#121F1B] rounded-3xl p-5 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-3">
+        <div className="bg-white dark:bg-black rounded-3xl p-5 border border-zinc-200 dark:border-white/10 shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#062E22] dark:text-emerald-100">
+            <h3 className="text-sm font-bold text-[#062E22] dark:text-white">
               {language === 'si' ? 'ප්‍රකට හීලෑ ඇත්තු' : 'Famous Tuskers'}
             </h3>
             <button
               onClick={onOpenDirectory}
-              className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-[#062E22] dark:text-white hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>{language === 'si' ? 'සියල්ල' : 'View All'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -209,13 +206,13 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 <div
                   key={el.id || el.name}
                   onClick={() => onSelectElephant(el)}
-                  className="p-2.5 rounded-2xl bg-[#FAF9F5] dark:bg-[#1A2C26] border border-zinc-200/80 dark:border-emerald-950/60 hover:border-emerald-700 dark:hover:border-amber-400 transition-all cursor-pointer space-y-2 group"
+                  className="p-2.5 rounded-2xl bg-zinc-50 dark:bg-black border border-zinc-200 dark:border-white/10 hover:border-[#062E22] dark:hover:border-white transition-all cursor-pointer space-y-2 group"
                 >
                   <div className="aspect-square rounded-xl overflow-hidden bg-zinc-200 dark:bg-zinc-800">
                     <img src={photo} alt={el.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-xs text-[#062E22] dark:text-emerald-100 truncate" title={bilingualName}>{bilingualName}</h4>
+                    <h4 className="font-bold text-xs text-[#062E22] dark:text-white truncate" title={bilingualName}>{bilingualName}</h4>
                     <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{el.organization || el.location}</p>
                   </div>
                 </div>
@@ -238,9 +235,9 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
   return (
     <div className="max-w-lg mx-auto w-full pb-24 animate-fadeIn space-y-4 pt-1">
       {/* Profile Card */}
-      <div className="bg-white dark:bg-[#121F1B] rounded-3xl p-5 sm:p-6 border border-zinc-200 dark:border-emerald-950/70 shadow-xs space-y-4 relative overflow-hidden">
+      <div className="bg-white dark:bg-black rounded-3xl p-5 sm:p-6 border border-zinc-200 dark:border-white/10 shadow-xs space-y-4 relative overflow-hidden">
         {/* Decorative Top subtle background */}
-        <div className="h-20 -mx-6 -mt-6 bg-gradient-to-r from-[#062E22] via-[#0B4A37] to-[#041D15] relative">
+        <div className="h-20 -mx-6 -mt-6 bg-[#062E22] relative">
           <div className="absolute top-2 right-3 flex items-center gap-1.5">
             <button
               onClick={signOut}
@@ -257,8 +254,8 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         <div className="relative -mt-12 flex flex-col items-center text-center space-y-2">
           {/* Gmail Avatar with border ring */}
           <div className="relative">
-            <div className="w-22 h-22 sm:w-24 sm:h-24 rounded-full p-1 bg-white dark:bg-[#121F1B] shadow-xl">
-              <div className="w-full h-full rounded-full overflow-hidden bg-emerald-950 border-2 border-emerald-600">
+            <div className="w-22 h-22 sm:w-24 sm:h-24 rounded-full p-1 bg-white dark:bg-black shadow-xl">
+              <div className="w-full h-full rounded-full overflow-hidden bg-black border-2 border-[#062E22]">
                 <img
                   src={userPhoto}
                   alt={displayName}
@@ -267,7 +264,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               </div>
             </div>
             {/* Google Verified Icon */}
-            <div className="absolute bottom-1 right-1 bg-emerald-600 text-white p-1 rounded-full shadow-md border-2 border-white dark:border-zinc-900" title="Verified Google Account">
+            <div className="absolute bottom-1 right-1 bg-[#062E22] text-white p-1 rounded-full shadow-md border-2 border-white dark:border-zinc-900" title="Verified Google Account">
               <CheckCircle2 className="w-3.5 h-3.5" />
             </div>
           </div>
@@ -275,15 +272,15 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           {/* Name & Google Email & Username */}
           <div className="space-y-0.5">
             <div className="flex items-center justify-center gap-1.5">
-              <h2 className="text-lg sm:text-xl font-black text-[#062E22] dark:text-emerald-100">
+              <h2 className="text-lg sm:text-xl font-bold text-[#062E22] dark:text-white">
                 {displayName}
               </h2>
-              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300/60">
+              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#062E22] text-white">
                 Google
               </span>
             </div>
 
-            <p className="text-xs font-bold text-emerald-800 dark:text-emerald-400 font-mono">
+            <p className="text-xs font-bold text-[#062E22] dark:text-zinc-400 font-mono">
               {username}
             </p>
 
@@ -301,7 +298,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 onChange={(e) => setBioInput(e.target.value)}
                 maxLength={160}
                 rows={2}
-                className="w-full p-2.5 text-xs rounded-xl border border-zinc-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-700 bg-zinc-50 dark:bg-[#1A2C26] text-zinc-800 dark:text-zinc-200"
+                className="w-full p-2.5 text-xs rounded-xl border border-zinc-300 dark:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-[#062E22] bg-zinc-50 dark:bg-black text-zinc-800 dark:text-zinc-200"
                 placeholder="Write something about your love for Sri Lankan elephants..."
               />
               <div className="flex justify-end gap-2">
@@ -313,7 +310,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 </button>
                 <button
                   onClick={handleSaveBio}
-                  className="px-4 py-1 rounded-lg text-xs font-bold bg-[#062E22] dark:bg-emerald-600 text-white hover:bg-emerald-900 cursor-pointer shadow-xs"
+                  className="px-4 py-1 rounded-lg text-xs font-bold bg-[#062E22] text-white hover:bg-[#062E22]/90 cursor-pointer shadow-xs"
                 >
                   {language === 'si' ? 'සුරකින්න' : 'Save'}
                 </button>
@@ -336,9 +333,9 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-zinc-100 dark:border-white/10">
           <div className="text-center">
-            <div className="font-extrabold text-base sm:text-lg text-[#062E22] dark:text-emerald-100">
+            <div className="font-bold text-base sm:text-lg text-[#062E22] dark:text-white">
               {followedElephantsList.length}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -346,8 +343,8 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             </div>
           </div>
 
-          <div className="text-center border-x border-zinc-100 dark:border-zinc-800">
-            <div className="font-extrabold text-base sm:text-lg text-[#062E22] dark:text-emerald-100">
+          <div className="text-center border-x border-zinc-100 dark:border-white/10">
+            <div className="font-bold text-base sm:text-lg text-[#062E22] dark:text-white">
               {followedTuskersCount}
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -356,7 +353,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           </div>
 
           <div className="text-center">
-            <div className="font-extrabold text-base sm:text-lg text-emerald-700 dark:text-emerald-400">
+            <div className="font-bold text-base sm:text-lg text-[#062E22] dark:text-white">
               Active
             </div>
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
@@ -366,20 +363,20 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
         </div>
 
         {/* Quick App Settings (Dark / Light Theme & Language switch) */}
-        <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+        <div className="pt-3 border-t border-zinc-100 dark:border-white/10 flex items-center justify-between gap-2">
           {onToggleDarkMode && (
             <button
               onClick={onToggleDarkMode}
-              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-zinc-700"
+              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-black hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-white/10"
             >
               {darkMode ? (
                 <>
-                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <Sun className="w-3.5 h-3.5 text-zinc-400 dark:text-white" />
                   <span>{language === 'si' ? 'Light Mode' : 'Light Mode'}</span>
                 </>
               ) : (
                 <>
-                  <Moon className="w-3.5 h-3.5 text-emerald-700" />
+                  <Moon className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                   <span>{language === 'si' ? 'Dark Mode' : 'Dark Mode'}</span>
                 </>
               )}
@@ -389,9 +386,9 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           {onToggleLanguage && (
             <button
               onClick={onToggleLanguage}
-              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-zinc-700"
+              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-black hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-white/10"
             >
-              <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <Globe className="w-3.5 h-3.5 text-[#062E22] dark:text-white" />
               <span>{language === 'si' ? 'Switch to English' : 'සිංහලට මාරු වන්න'}</span>
             </button>
           )}
@@ -399,12 +396,12 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
       </div>
 
       {/* Tabs: Followed Elephants & Suggestions */}
-      <div className="flex border-b border-zinc-200 dark:border-emerald-950/70 bg-white dark:bg-[#121F1B] rounded-2xl p-1 shadow-2xs">
+      <div className="flex border-b border-zinc-200 dark:border-white/10 bg-white dark:bg-black rounded-2xl p-1 shadow-2xs">
         <button
           onClick={() => setActiveTab('following')}
           className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'following'
-              ? 'bg-[#062E22] text-white dark:bg-emerald-600 shadow-xs'
+              ? 'bg-[#062E22] text-white shadow-xs'
               : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-white'
           }`}
         >
@@ -416,7 +413,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           onClick={() => setActiveTab('saved')}
           className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'saved'
-              ? 'bg-[#062E22] text-white dark:bg-emerald-600 shadow-xs'
+              ? 'bg-[#062E22] text-white shadow-xs'
               : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-white'
           }`}
         >
@@ -429,12 +426,12 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
       {activeTab === 'following' && (
         <div className="space-y-3">
           {followedElephantsList.length === 0 ? (
-            <div className="bg-white dark:bg-[#121F1B] rounded-3xl p-8 text-center space-y-3 border border-zinc-200 dark:border-emerald-950/70 shadow-2xs">
-              <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 flex items-center justify-center">
+            <div className="bg-white dark:bg-black rounded-3xl p-8 text-center space-y-3 border border-zinc-200 dark:border-white/10 shadow-2xs">
+              <div className="w-14 h-14 mx-auto rounded-full bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white flex items-center justify-center">
                 <ElephantIcon className="w-7 h-7" />
               </div>
               <div className="space-y-1">
-                <h4 className="text-sm font-extrabold text-[#062E22] dark:text-emerald-100">
+                <h4 className="text-sm font-bold text-[#062E22] dark:text-white">
                   {language === 'si' ? 'ඔබ තවම කිසිදු ඇතෙකු Follow කර නැත' : 'No elephants followed yet'}
                 </h4>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">
@@ -460,7 +457,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                 return (
                   <div
                     key={el.id || el.name}
-                    className="bg-white dark:bg-[#121F1B] rounded-2xl p-3 border border-zinc-200/80 dark:border-emerald-950/70 shadow-2xs flex items-center justify-between gap-3 hover:shadow-sm transition-all"
+                    className="bg-white dark:bg-black rounded-2xl p-3 border border-zinc-200 dark:border-white/10 shadow-2xs flex items-center justify-between gap-3 hover:shadow-sm transition-all"
                   >
                     <div
                       onClick={() => onSelectElephant(el)}
@@ -471,8 +468,8 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1">
-                          <h4 className="font-bold text-xs text-[#062E22] dark:text-emerald-100 truncate" title={bilingualName}>{bilingualName}</h4>
-                          {isTusker && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
+                          <h4 className="font-bold text-xs text-[#062E22] dark:text-white truncate" title={bilingualName}>{bilingualName}</h4>
+                          {isTusker && <Crown className="w-3 h-3 text-[#062E22] dark:text-white shrink-0" />}
                         </div>
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{el.organization || el.location}</p>
                       </div>
@@ -480,7 +477,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
 
                     <button
                       onClick={() => el.id && toggleFollowElephant(el.id)}
-                      className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-red-50 dark:hover:bg-red-950/40 text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 border border-zinc-200 dark:border-zinc-700 transition-colors cursor-pointer shrink-0"
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-950/40 text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer shrink-0"
                     >
                       {language === 'si' ? 'Following' : 'Following'}
                     </button>
@@ -501,7 +498,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
             </h3>
             <button
               onClick={onOpenDirectory}
-              className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 cursor-pointer"
+              className="text-xs font-bold text-[#062E22] dark:text-white hover:underline cursor-pointer"
             >
               {language === 'si' ? 'සියල්ල බලන්න' : 'All Elephants'} →
             </button>
@@ -517,7 +514,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
               return (
                 <div
                   key={el.id || el.name}
-                  className="bg-white dark:bg-[#121F1B] rounded-2xl p-3.5 border border-zinc-200/80 dark:border-emerald-950/70 shadow-2xs flex items-center justify-between gap-3 hover:shadow-sm transition-all"
+                  className="bg-white dark:bg-black rounded-2xl p-3.5 border border-zinc-200 dark:border-white/10 shadow-2xs flex items-center justify-between gap-3 hover:shadow-sm transition-all"
                 >
                   <div
                     onClick={() => onSelectElephant(el)}
@@ -528,8 +525,8 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
-                        <h4 className="font-bold text-xs text-[#062E22] dark:text-emerald-100 truncate" title={bilingualName}>{bilingualName}</h4>
-                        {isTusker && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
+                        <h4 className="font-bold text-xs text-[#062E22] dark:text-white truncate" title={bilingualName}>{bilingualName}</h4>
+                        {isTusker && <Crown className="w-3 h-3 text-[#062E22] dark:text-white shrink-0" />}
                       </div>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{el.organization || el.location}</p>
                     </div>
@@ -539,8 +536,8 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
                     onClick={() => el.id && toggleFollowElephant(el.id)}
                     className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer shrink-0 ${
                       followingThis
-                        ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700'
-                        : 'bg-[#062E22] text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 shadow-2xs'
+                        ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-white/10'
+                        : 'bg-[#062E22] text-white hover:bg-emerald-900 shadow-2xs'
                     }`}
                   >
                     {followingThis ? 'Following' : (language === 'si' ? '+ Follow' : '+ Follow')}
