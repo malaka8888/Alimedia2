@@ -16,6 +16,7 @@ import {
   addCulturalEvent,
   updateCulturalEvent,
   deleteCulturalEvent,
+  saveElephantsBatch,
   INITIAL_EVENTS
 } from './firebase/elephantService';
 import { getAllElephantPosts } from './firebase/postService';
@@ -305,6 +306,17 @@ export default function App() {
     }
   };
 
+  const handleSaveElephantsBatch = async (
+    operations: {
+      data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>;
+      id?: string;
+    }[]
+  ) => {
+    await saveElephantsBatch(operations);
+    const fresh = await getElephants();
+    setElephants(fresh);
+  };
+
   const handleDeleteElephant = async (id: string) => {
     const result = await deleteElephantCascade(id);
     showNotification(
@@ -562,6 +574,7 @@ export default function App() {
           elephants={elephants}
           events={events}
           onSaveElephant={handleSaveElephant}
+          onSaveElephantsBatch={handleSaveElephantsBatch}
           onDeleteElephant={handleDeleteElephant}
           onToggleVerification={handleToggleVerification}
           onToggleFeatured={handleToggleFeatured}

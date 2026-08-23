@@ -10,7 +10,8 @@ import {
   query,
   orderBy,
   where,
-  arrayRemove
+  arrayRemove,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
@@ -248,6 +249,51 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
     }
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Perform a fast batch commit of multiple elephant creations/updates in one network trip
+ */
+export async function saveElephantsBatch(
+  operations: {
+    data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>;
+    id?: string;
+  }[]
+): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+
+    operations.forEach((op) => {
+      if (op.id) {
+        const docRef = doc(db, ELEPHANTS_COLLECTION, op.id);
+        const rest = op.data;
+        batch.update(docRef, {
+          ...rest,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        const docRef = doc(elephantsCol); // Auto-generate ref ID
+        batch.set(docRef, {
+          ...op.data,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
+
+    const commitPromise = (async () => {
+      await batch.commit();
+      return 'success';
+    })();
+    const result = await withTimeout(commitPromise, 25000, 'timeout_error');
+    if (result === 'timeout_error') {
+      throw new Error('Firestore batch commit timed out (25s limit reached)');
+    }
+  } catch (error) {
+    console.error('Error in batch commit:', error);
     throw error;
   }
 }

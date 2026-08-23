@@ -23,10 +23,13 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { Language } from '../utils/translations';
+import { compressBase64Image } from '../utils/imageCompressor';
+
 
 interface BulkImportElephantsProps {
   existingElephants: Elephant[];
   onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
+  onSaveElephantsBatch?: (operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string; }[]) => Promise<void>;
   language: Language;
   onFinished: () => void;
 }
@@ -110,6 +113,7 @@ function isMissingOrPlaceholder(val: any): boolean {
 export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
   existingElephants,
   onSaveElephant,
+  onSaveElephantsBatch,
   language,
   onFinished,
 }) => {
@@ -821,42 +825,117 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
 
     setImportProgress({ current: 0, total, success: 0, failed: 0 });
 
-    for (let i = 0; i < total; i++) {
-      const row = validRows[i];
-      setImportProgress({ current: i + 1, total, success: successCount, failed: failCount });
+    if (onSaveElephantsBatch) {
+      const operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string }[] = [];
+      logs.push(language === 'si' ? 'දත්ත සකසමින් සහ ඡායාරූප සම්පීඩනය කරමින්...' : 'Preparing data and compressing images...');
+      setImportLogs([...logs]);
 
-      try {
-        const isMatch = row.isExistingMatch && row.matchedElephant;
-        const targetId = (importMode !== 'add_only' && isMatch) ? row.matchedId : undefined;
+      for (let i = 0; i < total; i++) {
+        const row = validRows[i];
+        setImportProgress({ current: i + 1, total, success: 0, failed: 0 });
 
-        const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
+        try {
+          const isMatch = row.isExistingMatch && row.matchedElephant;
+          const targetId = (importMode !== 'add_only' && isMatch) ? row.matchedId : undefined;
 
-        // pass true to skipRefresh to prevent serial downloads of the entire DB
-        await onSaveElephant(payload, targetId, true);
+          const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
 
-        successCount++;
-        if (targetId) {
-          const filledText = row.missingFieldsToFill && row.missingFieldsToFill.length > 0
-            ? ` (අඩු තොරතුරු ${row.missingFieldsToFill.length}ක් සම්පූර්ණ විය)`
-            : '';
-          logs.push(`✓ [${i + 1}/${total}] ${row.name} (${row.sinhalaName || 'Elephant'}) - පැතිකඩ යාවත්කාලීන විය${filledText}`);
-        } else {
-          logs.push(`✓ [${i + 1}/${total}] ${row.name} (${row.sinhalaName || 'Elephant'}) - අලුතින් එක් විය (New Added)`);
+          // Compress base64 photos in payload first
+          if (payload.photos && payload.photos.length > 0) {
+            payload.photos = await Promise.all(
+              payload.photos.map(async (photo) => {
+                if (photo.startsWith('data:image')) {
+                  try {
+                    return await compressBase64Image(photo, { maxDimension: 600, quality: 0.6 });
+                  } catch (e) {
+                    return photo;
+                  }
+                }
+                return photo;
+              })
+            );
+          }
+
+          operations.push({ data: payload, id: targetId });
+        } catch (e: any) {
+          failCount++;
+          logs.push(`✗ [${i + 1}/${total}] ${row.name} - Preprocessing Error: ${e.message || e}`);
+          setImportLogs([...logs]);
         }
-      } catch (err: any) {
-        failCount++;
-        logs.push(`✗ [${i + 1}/${total}] ${row.name} - Error: ${err.message || err}`);
       }
 
-      setImportLogs([...logs]);
-    }
+      // Commit batch in exactly one network trip
+      if (operations.length > 0) {
+        try {
+          logs.push(
+            language === 'si' 
+              ? `වාර්තා ${operations.length} ක් එකවර දත්ත ගබඩාවට ඇතුළත් කරමින් (Batch Uploading)...` 
+              : `Uploading all ${operations.length} records in a single batch...`
+          );
+          setImportLogs([...logs]);
 
-    // Trigger exactly ONE final single update to fetch fresh database state
-    if (successCount > 0) {
-      try {
-        await onSaveElephant({ name: '__REFRESH__' } as any);
-      } catch (e) {
-        console.warn('Final state refresh notice:', e);
+          await onSaveElephantsBatch(operations);
+
+          successCount += operations.length;
+          logs.push(
+            language === 'si' 
+              ? `✓ සියලුම වාර්තා ${successCount} සාර්ථකව ඇතුළත් කර අවසන් විය!` 
+              : `✓ All ${successCount} records successfully imported in a single batch!`
+          );
+        } catch (err: any) {
+          failCount += operations.length;
+          logs.push(`✗ Batch Upload Error: ${err.message || err}`);
+        }
+        setImportLogs([...logs]);
+      }
+    } else {
+      // Fallback to sequential individual uploads (if batch save isn't passed)
+      for (let i = 0; i < total; i++) {
+        const row = validRows[i];
+        setImportProgress({ current: i + 1, total, success: successCount, failed: failCount });
+
+        try {
+          const isMatch = row.isExistingMatch && row.matchedElephant;
+          const targetId = (importMode !== 'add_only' && isMatch) ? row.matchedId : undefined;
+
+          const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
+
+          if (payload.photos && payload.photos.length > 0) {
+            payload.photos = await Promise.all(
+              payload.photos.map(async (photo) => {
+                if (photo.startsWith('data:image')) {
+                  try {
+                    return await compressBase64Image(photo, { maxDimension: 600, quality: 0.6 });
+                  } catch (e) {
+                    return photo;
+                  }
+                }
+                return photo;
+              })
+            );
+          }
+
+          await onSaveElephant(payload, targetId, true);
+
+          successCount++;
+          if (targetId) {
+            logs.push(`✓ [${i + 1}/${total}] ${row.name} - Updated`);
+          } else {
+            logs.push(`✓ [${i + 1}/${total}] ${row.name} - Added`);
+          }
+        } catch (err: any) {
+          failCount++;
+          logs.push(`✗ [${i + 1}/${total}] ${row.name} - Error: ${err.message || err}`);
+        }
+        setImportLogs([...logs]);
+      }
+
+      if (successCount > 0) {
+        try {
+          await onSaveElephant({ name: '__REFRESH__' } as any);
+        } catch (e) {
+          console.warn('Final state refresh notice:', e);
+        }
       }
     }
 

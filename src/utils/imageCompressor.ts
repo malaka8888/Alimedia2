@@ -89,3 +89,50 @@ export const preloadImage = (url: string): Promise<void> => {
     img.src = url;
   });
 };
+
+/**
+ * Optimizes/Compresses raw base64 images (data:image/...) to lightweight JPEG thumbnails
+ */
+export const compressBase64Image = async (
+  base64Str: string,
+  options: CompressionOptions = {}
+): Promise<string> => {
+  const { maxDimension = 500, quality = 0.6, mimeType = 'image/jpeg' } = options;
+  if (!base64Str || !base64Str.startsWith('data:image')) {
+    return base64Str;
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onerror = () => resolve(base64Str);
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (!ctx) {
+          return resolve(base64Str);
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL(mimeType, quality);
+        resolve(compressed || base64Str);
+      } catch {
+        resolve(base64Str);
+      }
+    };
+    img.src = base64Str;
+  });
+};
+

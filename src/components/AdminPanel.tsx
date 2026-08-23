@@ -109,6 +109,7 @@ interface AdminPanelProps {
   elephants: Elephant[];
   events: CulturalEvent[];
   onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
+  onSaveElephantsBatch?: (operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string; }[]) => Promise<void>;
   onDeleteElephant: (id: string) => Promise<{
     deletedElephantName: string;
     postsDeleted: number;
@@ -165,6 +166,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   elephants,
   events,
   onSaveElephant,
+  onSaveElephantsBatch,
   onDeleteElephant,
   onToggleVerification,
   onToggleFeatured,
@@ -2398,6 +2400,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="animate-fadeIn">
             <BulkImportElephants
               onSaveElephant={onSaveElephant}
+              onSaveElephantsBatch={onSaveElephantsBatch}
               existingElephants={elephants}
               language={language}
               onFinished={async () => {
