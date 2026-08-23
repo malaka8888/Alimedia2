@@ -141,30 +141,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleFollowElephant = async (elephantId: string): Promise<boolean> => {
     if (!elephantId) return false;
+    if (!profile) {
+      alert(
+        localStorage.getItem('alimedia_lang') === 'si'
+          ? 'ඇත්තු/අලි Follow කිරීමට කරුණාකර පළමුව Google (Gmail) ගිණුමෙන් පිවිසෙන්න!'
+          : 'Please sign in with your Google (Gmail) account first to follow tuskers and elephants!'
+      );
+      return false;
+    }
     const currently = isFollowing(elephantId);
     const newStatus = !currently;
 
     // Update local state instantly
     let updatedList: string[];
     if (currently) {
-      updatedList = (profile?.followedElephants || localFollows).filter((id) => id !== elephantId);
+      updatedList = profile.followedElephants.filter((id) => id !== elephantId);
     } else {
-      updatedList = [...(profile?.followedElephants || localFollows), elephantId];
+      updatedList = [...profile.followedElephants, elephantId];
     }
 
     setLocalFollows(updatedList);
     localStorage.setItem('alimedia_followed_elephants', JSON.stringify(updatedList));
 
-    if (profile) {
-      setProfile({
-        ...profile,
-        followedElephants: updatedList,
-      });
+    setProfile({
+      ...profile,
+      followedElephants: updatedList,
+    });
 
-      // Update in Firestore
-      if (user?.uid) {
-        await toggleFollowElephantInDb(user.uid, elephantId, currently);
-      }
+    // Update in Firestore
+    if (user?.uid) {
+      await toggleFollowElephantInDb(user.uid, elephantId, currently);
     }
 
     return newStatus;

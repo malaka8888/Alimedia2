@@ -65,16 +65,7 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   const heroPhoto = allPhotos[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';
 
   // Base followers
-  const followerCount = useMemo(() => {
-    const base = elephant.followerCount || (
-      elephant.name.toLowerCase().includes('ind') ? 14250 :
-      elephant.name.toLowerCase().includes('myan') ? 11800 :
-      elephant.name.toLowerCase().includes('kand') ? 9400 :
-      elephant.name.toLowerCase().includes('nad') ? 16500 :
-      5800
-    );
-    return base + (following ? 1 : 0);
-  }, [elephant, following]);
+  const followerCount = elephant.followerCount || 0;
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}/#${elephant.id || elephant.name}`;

@@ -39,16 +39,9 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
   // TOP 3 MOST FOLLOWED ELEPHANTS
   // -------------------------------------------------------------
   const topFollowedElephants = useMemo(() => {
-    const scored = elephants.map((el, idx) => {
-      const baseFollowers = el.followerCount || (
-        el.name.toLowerCase().includes('ind') ? 14250 :
-        el.name.toLowerCase().includes('myan') ? 11800 :
-        el.name.toLowerCase().includes('kand') ? 9400 :
-        el.name.toLowerCase().includes('nad') ? 16500 :
-        7200 - idx * 600
-      );
+    const scored = elephants.map((el) => {
+      const totalFollowers = el.followerCount || 0;
       const isCurrentlyFollowed = el.id ? isFollowing(el.id) : false;
-      const totalFollowers = baseFollowers + (isCurrentlyFollowed ? 1 : 0);
       return {
         elephant: el,
         followers: totalFollowers,

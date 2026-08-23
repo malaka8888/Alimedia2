@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Globe, User, Moon, Sun } from 'lucide-react';
+import { Shield, Globe, User, Moon, Sun, Bell } from 'lucide-react';
 import { ElephantIcon } from './ElephantIcon';
 import { Language, translations } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
@@ -14,6 +14,7 @@ interface NavbarProps {
   onOpenAdmin: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
+  hasNewNotifications?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAdmin,
   darkMode,
   onToggleDarkMode,
+  hasNewNotifications = false,
 }) => {
   const t = translations[language];
   const { user, profile } = useAuth();
@@ -76,6 +78,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <ElephantIcon className="w-3.5 h-3.5" />
             <span>{language === 'si' ? 'අලි නාමාවලිය' : 'Elephants'}</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('notifications' as any)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer relative ${
+              currentTab === 'notifications'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 hover:text-black dark:hover:text-white'
+            }`}
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>{language === 'si' ? 'නිවේදන' : 'Notices'}</span>
+            {hasNewNotifications && currentTab !== 'notifications' && (
+              <span className="absolute top-1 right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            )}
           </button>
           <button
             onClick={() => onSelectTab('profile')}

@@ -90,10 +90,16 @@
     },
     "CulturalEvent": {
       "title": "CulturalEvent",
-      "description": "Perahera and cultural festival schedules",
+      "description": "Perahera and general notifications, updates, and alerts with cover images",
       "type": "object",
       "properties": {
         "title": {
+          "type": "string"
+        },
+        "sinhalaTitle": {
+          "type": "string"
+        },
+        "description": {
           "type": "string"
         },
         "location": {
@@ -101,9 +107,49 @@
         },
         "date": {
           "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "participatingElephants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "coverImage": {
+          "type": "string"
         }
       },
       "required": ["title", "location", "date"]
+    },
+    "VisitorInfo": {
+      "title": "VisitorInfo",
+      "description": "Real-time website visitor presence tracking",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "sessionStart": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastActive": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "displayName", "email"]
     }
   },
   "firestore": {
@@ -130,6 +176,12 @@
         "$ref": "#/entities/CulturalEvent"
       },
       "description": "Perahera calendar and cultural events notices"
+    },
+    "/visitors/{visitorId}": {
+      "schema": {
+        "$ref": "#/entities/VisitorInfo"
+      },
+      "description": "Real-time presence tracking of active site visitors"
     }
   }
 }

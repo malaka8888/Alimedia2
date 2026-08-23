@@ -7,12 +7,14 @@ interface BottomNavProps {
   currentTab: 'home' | 'elephant' | 'notifications' | 'profile';
   onSelectTab: (tab: 'home' | 'elephant' | 'notifications' | 'profile') => void;
   onOpenAdd: () => void;
+  hasNewNotifications?: boolean;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   currentTab,
   onSelectTab,
   onOpenAdd,
+  hasNewNotifications = false,
 }) => {
   const { user, profile } = useAuth();
   const userPhoto = profile?.photoURL || user?.photoURL;
@@ -73,7 +75,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               : 'text-zinc-400 dark:text-zinc-600 hover:text-black dark:hover:text-white'
           }`}
         >
-          <Bell className={`w-6 h-6 ${currentTab === 'notifications' ? 'stroke-[2.5]' : 'stroke-2'}`} />
+          <div className="relative">
+            <Bell className={`w-6 h-6 ${currentTab === 'notifications' ? 'stroke-[2.5]' : 'stroke-2'}`} />
+            {hasNewNotifications && currentTab !== 'notifications' && (
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white dark:border-black"></span>
+              </span>
+            )}
+          </div>
           {currentTab === 'notifications' && (
             <span className="w-1.5 h-1.5 bg-[#062E22] dark:bg-white rounded-full mt-0.5" />
           )}

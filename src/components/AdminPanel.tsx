@@ -59,6 +59,8 @@ import * as XLSX from 'xlsx';
 import { Language, translations } from '../utils/translations';
 import { BulkImportElephants } from './BulkImportElephants';
 import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
+import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
+import { resetAllCountsInFirestore } from '../firebase/migrationService';
 
 // Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
 const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
@@ -186,8 +188,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordInput, setPasswordInput] = useState<string>('admin@alimedia');
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Visitors & Reset Metrics State
+  const [visitors, setVisitors] = useState<VisitorInfo[]>([]);
+  const [isResettingMetrics, setIsResettingMetrics] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const unsub = subscribeToVisitors((data) => {
+        setVisitors(data);
+      });
+      return unsub;
+    }
+  }, [isAuthenticated]);
+
   // Admin Navigation Tabs (Categorized & Mobile-friendly)
   const [adminTab, setAdminTab] = useState<AdminCategoryTab>('overview');
+
+  // Helper: Format active duration nicely
+  const formatActiveDuration = (sessionStart: any, lastActive: any): string => {
+    if (!sessionStart || !lastActive) return '0s';
+    
+    const startMs = typeof sessionStart.toMillis === 'function' 
+      ? sessionStart.toMillis() 
+      : (sessionStart.seconds ? sessionStart.seconds * 1000 : Date.parse(sessionStart) || Date.now());
+    const activeMs = typeof lastActive.toMillis === 'function' 
+      ? lastActive.toMillis() 
+      : (lastActive.seconds ? lastActive.seconds * 1000 : Date.parse(lastActive) || Date.now());
+    
+    const diffSec = Math.max(0, Math.floor((activeMs - startMs) / 1000));
+    if (diffSec < 60) return `${diffSec}s`;
+    const diffMin = Math.floor(diffSec / 60);
+    const remainingSec = diffSec % 60;
+    if (diffMin < 60) return `${diffMin}m ${remainingSec}s`;
+    const diffHr = Math.floor(diffMin / 60);
+    const remainingMin = diffMin % 60;
+    return `${diffHr}h ${remainingMin}m`;
+  };
+
+  // Helper: Check if a visitor is currently online
+  const isVisitorOnline = (lastActive: any): boolean => {
+    if (!lastActive) return false;
+    const activeMs = typeof lastActive.toMillis === 'function' 
+      ? lastActive.toMillis() 
+      : (lastActive.seconds ? lastActive.seconds * 1000 : Date.parse(lastActive) || Date.now());
+    const diffSec = (Date.now() - activeMs) / 1000;
+    return diffSec < 120; // active in last 2 minutes
+  };
   
   // Search and Filter State for Elephants
   const [searchQuery, setSearchQuery] = useState('');
@@ -242,8 +288,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     type: 'perahera',
     participatingElephants: [],
     isActive: true,
+    coverImage: '',
   });
   const [eventElephantsText, setEventElephantsText] = useState('');
+  const [isCompressingEventCover, setIsCompressingEventCover] = useState(false);
+  const eventCoverInputRef = useRef<HTMLInputElement>(null);
 
   // Action status
   const [isSaving, setIsSaving] = useState(false);
@@ -473,6 +522,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  // Reset all follow and like counts to 0 in Firestore
+  const handleResetMetrics = async () => {
+    if (confirm('ඔබට සියලුම අලි ඇතුන්ගේ Follow count සහ Posts වල Like count 0 කිරීමට අවශ්‍ය බව ස්ථිරද? (Are you sure you want to reset all Follow & Like counts to 0?)')) {
+      try {
+        setIsResettingMetrics(true);
+        const { elephantsReset, postsReset } = await resetAllCountsInFirestore();
+        showToast(`සාර්ථකව 0 කරන ලදී! අලි ඇතුන් ${elephantsReset}ක් සහ පළකිරීම් ${postsReset}ක් යාවත්කාලීන විය.`);
+      } catch (err: any) {
+        alert(`Error resetting metrics: ${err.message || err}`);
+      } finally {
+        setIsResettingMetrics(false);
+      }
+    }
+  };
+
   // Photo handlers & Gallery Uploader
   const handleGalleryFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
@@ -568,6 +632,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       type: 'perahera',
       participatingElephants: [],
       isActive: true,
+      coverImage: '',
     });
     setEventElephantsText('');
   };
@@ -583,8 +648,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       type: ev.type,
       participatingElephants: ev.participatingElephants || [],
       isActive: ev.isActive,
+      coverImage: ev.coverImage || '',
     });
     setEventElephantsText((ev.participatingElephants || []).join(', '));
+  };
+
+  const handleEventCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.type.startsWith('image/')) return;
+
+    try {
+      setIsCompressingEventCover(true);
+      // Highly compress notification/event image to maximum 800 width/height and 0.65 quality to be super light-weight
+      const compressedUrl = await compressImageFile(file, 800, 800, 0.65);
+      setEventFormData((prev) => ({
+        ...prev,
+        coverImage: compressedUrl,
+      }));
+      showToast('කවරයේ පින්තූරය සාර්ථකව සම්පීඩනය කර (Compressed) සම්බන්ධ කරන ලදී!');
+    } catch (err: any) {
+      console.error('Event cover compression notice:', err);
+      alert('පින්තූරය සකස් කිරීමේදී ගැටලුවක් ඇතිවිය.');
+    } finally {
+      setIsCompressingEventCover(false);
+      if (eventCoverInputRef.current) {
+        eventCoverInputRef.current.value = '';
+      }
+    }
   };
 
   const handleSubmitEvent = async (e: React.FormEvent) => {
@@ -1180,6 +1272,141 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:translate-x-1 transition-transform" />
               </button>
+            </div>
+
+            {/* Real-time Website Activity & Active Duration Tracking */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-4">
+                <div>
+                  <h3 className="font-black text-base text-[#062E22] flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span>සජීවී වෙබ් අඩවි පරිශීලකයින් (Real-time Website Traffic)</span>
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                    වෙබ් අඩවියට පැමිණෙන පුද්ගලයින් සහ ඔවුන් රැඳී සිටින කාලය (Live presence tracking)
+                  </p>
+                </div>
+                
+                {/* Reset Metrics Button */}
+                <button
+                  onClick={handleResetMetrics}
+                  disabled={isResettingMetrics}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all self-start sm:self-center"
+                >
+                  {isResettingMetrics ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Database className="w-3.5 h-3.5" />
+                  )}
+                  <span>සියලු මිනුම් 0 කරන්න (Reset Counts to 0)</span>
+                </button>
+              </div>
+
+              {/* Traffic Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg">
+                    {visitors.filter((v) => isVisitorOnline(v.lastActive)).length}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Active Now</div>
+                    <div className="text-xs font-bold text-emerald-950">දැනට ක්‍රියාකාරී පිරිස</div>
+                  </div>
+                </div>
+
+                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-800 font-black text-lg">
+                    {visitors.length}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Total Visitors Today</div>
+                    <div className="text-xs font-bold text-blue-950">මුළු පැමිණීම් සංඛ්‍යාව</div>
+                  </div>
+                </div>
+
+                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 font-black text-sm">
+                    {(() => {
+                      const activeOnes = visitors.filter((v) => isVisitorOnline(v.lastActive));
+                      if (activeOnes.length === 0) return '0s';
+                      const sumMs = activeOnes.reduce((acc, v) => {
+                        const start = v.sessionStart?.seconds || Date.now() / 1000;
+                        const last = v.lastActive?.seconds || Date.now() / 1000;
+                        return acc + (last - start);
+                      }, 0);
+                      const avgSec = Math.floor(sumMs / activeOnes.length);
+                      return avgSec < 60 ? `${avgSec}s` : `${Math.floor(avgSec / 60)}m`;
+                    })()}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Avg. Session Time</div>
+                    <div className="text-xs font-bold text-amber-950">සාමාන්‍ය රැඳී සිටි කාලය</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detailed Active Users list */}
+              <div className="border border-zinc-200/80 rounded-2xl overflow-hidden">
+                <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200 flex justify-between text-[10px] font-extrabold uppercase text-zinc-400 tracking-wider">
+                  <span>පරිශීලකයා (Visitor Detail)</span>
+                  <span>රැඳී සිටි කාලය (Active Duration)</span>
+                </div>
+                <div className="divide-y divide-zinc-100 max-h-60 overflow-y-auto">
+                  {visitors.length === 0 ? (
+                    <div className="p-4 text-center text-zinc-400 text-xs italic">
+                      No visitors tracked yet.
+                    </div>
+                  ) : (
+                    visitors
+                      .slice()
+                      .sort((a, b) => {
+                        // Put active ones first, then newest sessions
+                        const aOnline = isVisitorOnline(a.lastActive) ? 1 : 0;
+                        const bOnline = isVisitorOnline(b.lastActive) ? 1 : 0;
+                        if (aOnline !== bOnline) return bOnline - aOnline;
+                        const aTime = a.sessionStart?.seconds || 0;
+                        const bTime = b.sessionStart?.seconds || 0;
+                        return bTime - aTime;
+                      })
+                      .map((visitor) => {
+                        const online = isVisitorOnline(visitor.lastActive);
+                        return (
+                          <div
+                            key={visitor.id}
+                            className="px-4 py-3 flex items-center justify-between hover:bg-emerald-50/20 transition-colors text-xs"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${online ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300'}`} />
+                              <div className="min-w-0">
+                                <div className="font-extrabold text-[#062E22] truncate flex items-center gap-1.5">
+                                  <span>{visitor.displayName}</span>
+                                  {visitor.email !== 'Guest' && (
+                                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-mono">
+                                      Gmail Connected
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-zinc-400 truncate">
+                                  {visitor.email} • ID: {visitor.id}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right flex-shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-zinc-100 font-extrabold font-mono text-[11px] text-zinc-700">
+                                <Clock className="w-3 h-3 text-zinc-400" />
+                                <span>{formatActiveDuration(visitor.sessionStart, visitor.lastActive)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Recent Elephants Quick Peek */}
@@ -2245,7 +2472,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <form onSubmit={handleSubmitEvent} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Event Title (English)*</label>
+                    <label className="text-xs font-bold text-zinc-700">Event/Notification Title (English)*</label>
                     <input
                       type="text"
                       required
@@ -2268,14 +2495,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය)</label>
-                    <input
-                      type="text"
-                      value={eventFormData.location}
-                      onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
-                      placeholder="e.g. Kandy / මහනුවර"
+                    <label className="text-xs font-bold text-zinc-700">Notification Type (නිවේදන වර්ගය)</label>
+                    <select
+                      value={eventFormData.type}
+                      onChange={(e) => setEventFormData({ ...eventFormData, type: e.target.value as any })}
                       className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    />
+                    >
+                      <option value="perahera">Perahera / Festival (පෙරහැර මංගල්‍ය)</option>
+                      <option value="ceremony">Cultural Ceremony (සංස්කෘතික උත්සව)</option>
+                      <option value="conservation">Conservation Alert (සංරක්ෂණ තොරතුරු)</option>
+                      <option value="general">General Notice (පොදු නිවේදන)</option>
+                      <option value="update">Platform Update (නව යාවත්කාලීන කිරීම්)</option>
+                      <option value="alert">Urgent Alert (හදිසි නිවේදන)</option>
+                      <option value="news">Latest News (පුවත් හා වාර්තා)</option>
+                      <option value="other">Other (වෙනත්)</option>
+                    </select>
                   </div>
 
                   <div className="space-y-1">
@@ -2289,7 +2523,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  <div className="space-y-1 sm:col-span-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය)</label>
+                    <input
+                      type="text"
+                      value={eventFormData.location}
+                      onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
+                      placeholder="e.g. Kandy / මහනුවර"
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="text-xs font-bold text-zinc-700">
                       Participating Elephants (සහභාගී වන අලි ඇතුන් - Comma separated)
                     </label>
@@ -2302,13 +2547,71 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
+                  {/* Cover Image Input Area with high compression feedback */}
                   <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-bold text-zinc-700">Description (විස්තරය)</label>
+                    <label className="text-xs font-bold text-zinc-700">Cover Image / කවරයේ පින්තූරය (compressed file/link)</label>
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                      <button
+                        type="button"
+                        disabled={isCompressingEventCover}
+                        onClick={() => eventCoverInputRef.current?.click()}
+                        className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        {isCompressingEventCover ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ImageIcon className="w-4 h-4" />
+                        )}
+                        <span>Upload & Compress Image</span>
+                      </button>
+                      <input
+                        type="file"
+                        ref={eventCoverInputRef}
+                        onChange={handleEventCoverFile}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <div className="flex-1 w-full">
+                        <input
+                          type="text"
+                          value={eventFormData.coverImage || ''}
+                          onChange={(e) => setEventFormData({ ...eventFormData, coverImage: e.target.value })}
+                          placeholder="Or paste direct image URL (නැතහොත් පින්තූරයේ URL එක මෙහි ඇතුලත් කරන්න)"
+                          className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {eventFormData.coverImage && (
+                      <div className="mt-2.5 relative inline-block rounded-2xl overflow-hidden border border-zinc-200 bg-[#FAF9F5] p-1.5">
+                        <img
+                          src={eventFormData.coverImage}
+                          alt="Cover Preview"
+                          className="h-24 w-auto object-cover rounded-xl"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEventFormData({ ...eventFormData, coverImage: '' })}
+                          className="absolute top-2.5 right-2.5 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full transition-all cursor-pointer"
+                          title="Remove Cover Image"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="text-[10px] text-zinc-500 mt-1 px-1 font-mono">
+                          Optimized Size: {eventFormData.coverImage.startsWith('data:') ? `${Math.round(eventFormData.coverImage.length * 0.75 / 1024)} KB` : 'External Link'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-bold text-zinc-700">Description / Message (නිවේදන විස්තරය)*</label>
                     <textarea
                       rows={3}
+                      required
                       value={eventFormData.description}
                       onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
-                      placeholder="පෙරහැර පිළිබඳ විශේෂ සටහන් සහ තොරතුරු..."
+                      placeholder="පෙරහැර පිළිබඳ විශේෂ සටහන්, නව පුවත් හෝ යාවත්කාලීන කිරීම් පිළිබඳ සවිස්තරාත්මක තොරතුරු මෙහි ඇතුළත් කරන්න..."
                       className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
                     />
                   </div>
@@ -2338,39 +2641,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Events List */}
             <div className="space-y-3">
               <h4 className="font-extrabold text-sm text-[#062E22]">
-                පළ කර ඇති පෙරහැර නිවේදන ({events.length})
+                පළ කර ඇති පෙරහැර හා පොදු නිවේදන ({events.length})
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {events.map((ev) => (
                   <div
                     key={ev.id}
-                    className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs space-y-3 flex flex-col justify-between"
+                    className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden flex flex-col justify-between"
                   >
                     <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h5 className="font-extrabold text-sm text-[#062E22]">{ev.title}</h5>
-                          {ev.sinhalaTitle && (
-                            <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                      {/* Notification Cover Image if exists */}
+                      {ev.coverImage && (
+                        <div className="w-full h-32 bg-zinc-100 overflow-hidden border-b border-zinc-150">
+                          <img
+                            src={ev.coverImage}
+                            alt={ev.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h5 className="font-extrabold text-sm text-[#062E22]">{ev.title}</h5>
+                            {ev.sinhalaTitle && (
+                              <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                            )}
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-250 shrink-0 uppercase tracking-wider">
+                            {ev.type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed">{ev.description}</p>
+                        <div className="text-[11px] text-zinc-500 font-medium space-y-0.5 pt-1">
+                          {ev.location && <div>📍 {ev.location}</div>}
+                          {ev.date && <div>📅 {ev.date}</div>}
+                          {ev.participatingElephants && ev.participatingElephants.length > 0 && (
+                            <div className="text-emerald-700 font-semibold truncate">
+                              🐘 {ev.participatingElephants.join(', ')}
+                            </div>
                           )}
                         </div>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-900">
-                          {ev.type}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-600 mt-2 line-clamp-2">{ev.description}</p>
-                      <div className="text-[11px] text-zinc-500 font-medium mt-2 space-y-0.5">
-                        <div>📍 {ev.location}</div>
-                        <div>📅 {ev.date}</div>
-                        {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                          <div className="text-emerald-700 font-semibold truncate">
-                            🐘 {ev.participatingElephants.join(', ')}
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+                    <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleOpenEditEvent(ev)}
                         className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"

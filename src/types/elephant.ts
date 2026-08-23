@@ -63,9 +63,10 @@ export interface CulturalEvent {
   description: string;
   location: string;
   date: string;
-  type: 'perahera' | 'ceremony' | 'conservation' | 'general';
+  type: 'perahera' | 'ceremony' | 'conservation' | 'general' | 'update' | 'alert' | 'news' | 'other';
   participatingElephants?: string[];
   isActive: boolean;
+  coverImage?: string;
   createdAt?: any;
   updatedAt?: any;
 }

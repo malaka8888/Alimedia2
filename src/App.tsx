@@ -31,6 +31,38 @@ import { CreatePostModal } from './components/CreatePostModal';
 import { PhotoLightbox } from './components/PhotoLightbox';
 import { Language, translations } from './utils/translations';
 import { CheckCircle2, Calendar, MapPin, Crown } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from './firebase/config';
+import { startPresenceHeartbeat } from './firebase/presenceService';
+import { useAuth } from './firebase/authContext';
+
+const getNotificationTypeLabel = (type: string, lang: 'si' | 'en') => {
+  const labels: Record<string, { si: string; en: string }> = {
+    perahera: { si: 'පෙරහැර මංගල්‍ය', en: 'Perahera' },
+    ceremony: { si: 'සංස්කෘතික උත්සව', en: 'Ceremony' },
+    conservation: { si: 'සංරක්ෂණ තොරතුරු', en: 'Conservation' },
+    general: { si: 'පොදු නිවේදනයක්', en: 'General' },
+    update: { si: 'යාවත්කාලීන කිරීමක්', en: 'Platform Update' },
+    alert: { si: 'හදිසි නිවේදනයක්', en: 'Urgent Alert' },
+    news: { si: 'පුවත් හා වාර්තා', en: 'Latest News' },
+    other: { si: 'වෙනත් නිවේදනයක්', en: 'Notice' },
+  };
+  return labels[type]?.[lang] || labels['other'][lang];
+};
+
+const getNotificationTypeStyles = (type: string) => {
+  const styles: Record<string, string> = {
+    perahera: 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300/40',
+    ceremony: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-300 border-indigo-300/40',
+    conservation: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border-emerald-300/40',
+    general: 'bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-300 border-zinc-300/40',
+    update: 'bg-blue-100 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 border-blue-300/40',
+    alert: 'bg-red-100 dark:bg-red-950/60 text-red-900 dark:text-red-300 border-red-300/40 animate-pulse',
+    news: 'bg-purple-100 dark:bg-purple-950/60 text-purple-900 dark:text-purple-300 border-purple-300/40',
+    other: 'bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-300 border-zinc-300/40',
+  };
+  return styles[type] || styles['other'];
+};
 
 export default function App() {
   const [elephants, setElephants] = useState<Elephant[]>(() => {
@@ -84,6 +116,7 @@ export default function App() {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false);
   const [createPostElephantId, setCreatePostElephantId] = useState<string | undefined>(undefined);
   const [isCreatePostStoryOnly, setIsCreatePostStoryOnly] = useState<boolean>(false);
+  const [hasNewNotifications, setHasNewNotifications] = useState<boolean>(false);
 
   const [isSeeding, setIsSeeding] = useState<boolean>(false);
 
@@ -139,35 +172,160 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Load elephants, cultural events, and community posts from Cloud Firestore with zero blocking
-  const loadData = useCallback(async () => {
-    try {
-      setError(null);
-      const [elephantData, eventData, postData] = await Promise.all([
-        getElephants(),
-        getCulturalEvents(),
-        getAllElephantPosts()
-      ]);
+  const { user, profile } = useAuth();
 
-      if (elephantData && elephantData.length > 0) {
-        setElephants(elephantData);
+  // Start tracking presence in real-time
+  useEffect(() => {
+    const unsub = startPresenceHeartbeat(profile?.displayName, profile?.email || 'Guest');
+    return unsub;
+  }, [profile?.displayName, profile?.email]);
+
+  // Real-time listener for elephants registry
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'elephants'), (snap) => {
+      const list: Elephant[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          name: data.name || 'Unnamed Elephant',
+          sinhalaName: data.sinhalaName || '',
+          otherNames: Array.isArray(data.otherNames) ? data.otherNames : [],
+          gender: data.gender || 'male',
+          type: data.type || 'elephant',
+          dateOfBirth: data.dateOfBirth || '',
+          age: data.age || '',
+          location: data.location || '',
+          organization: data.organization || '',
+          mahout: data.mahout || '',
+          tusks: data.tusks || '',
+          physicalCharacteristics: data.physicalCharacteristics || '',
+          description: data.description || '',
+          peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
+          photos: Array.isArray(data.photos) ? data.photos : [],
+          sources: Array.isArray(data.sources) ? data.sources : [],
+          verified: !!data.verified,
+          status: data.status || 'living',
+          isFeatured: !!data.isFeatured,
+          isLive: !!data.isLive,
+          customBadge: data.customBadge || '',
+          followerCount: data.followerCount || 0,
+        });
+      });
+      if (list.length > 0) {
+        setElephants(list);
+        try {
+          localStorage.setItem('alimedia_cached_elephants', JSON.stringify(list));
+        } catch {}
       }
-      if (eventData && eventData.length > 0) {
-        setEvents(eventData);
-      }
-      if (postData) {
-        setPosts(postData);
-      }
-    } catch (err: any) {
-      console.warn('Data sync notice:', err);
-    } finally {
-      setLoading(false);
-    }
+    }, (err) => {
+      console.warn('Real-time elephants subscription notice:', err);
+    });
+    return unsub;
   }, []);
 
+  // Real-time listener for community posts
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const unsub = onSnapshot(collection(db, 'elephant_posts'), (snap) => {
+      const list: ElephantPost[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          elephantId: data.elephantId,
+          elephantName: data.elephantName || 'Unknown Elephant',
+          elephantSinhalaName: data.elephantSinhalaName || '',
+          photoUrl: data.photoUrl,
+          caption: data.caption || '',
+          authorUid: data.authorUid || '',
+          authorName: data.authorName || 'Anonymous',
+          authorUsername: data.authorUsername || '@user',
+          authorPhotoURL: data.authorPhotoURL || '',
+          likesCount: data.likesCount || 0,
+          likedBy: Array.isArray(data.likedBy) ? data.likedBy : [],
+          isStory: data.isStory !== undefined ? data.isStory : true,
+          isStoryOnly: !!data.isStoryOnly,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+      // Sort by createdAt descending
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : Date.parse(a.createdAt) || 0);
+        const timeB = b.createdAt?.toMillis?.() || (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : Date.parse(b.createdAt) || 0);
+        return timeB - timeA;
+      });
+      setPosts(list);
+      try {
+        localStorage.setItem('alimedia_cached_posts', JSON.stringify(list));
+      } catch {}
+    }, (err) => {
+      console.warn('Real-time posts subscription notice:', err);
+    });
+    return unsub;
+  }, []);
+
+  // Real-time listener for cultural events and notifications
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'cultural_events'), (snap) => {
+      const list: CulturalEvent[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          title: data.title || '',
+          sinhalaTitle: data.sinhalaTitle || '',
+          description: data.description || '',
+          location: data.location || '',
+          date: data.date || '',
+          type: data.type || 'perahera',
+          participatingElephants: Array.isArray(data.participatingElephants) ? data.participatingElephants : [],
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          coverImage: data.coverImage || '',
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Sort by createdAt / updatedAt descending
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : Date.parse(a.createdAt) || 0);
+        const timeB = b.createdAt?.toMillis?.() || (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : Date.parse(b.createdAt) || 0);
+        return timeB - timeA;
+      });
+
+      if (list.length > 0) {
+        setEvents(list);
+        try {
+          localStorage.setItem('alimedia_cached_events', JSON.stringify(list));
+        } catch {}
+
+        // Calculate if there are unread notifications
+        const lastViewedStr = localStorage.getItem('alimedia_last_viewed_notifications');
+        const lastViewed = lastViewedStr ? parseInt(lastViewedStr, 10) : 0;
+        
+        const hasUnread = list.some((ev) => {
+          const evTime = ev.createdAt?.toMillis?.() || (ev.createdAt?.seconds ? ev.createdAt.seconds * 1000 : Date.parse(ev.createdAt) || 0);
+          return evTime > lastViewed;
+        });
+
+        if (hasUnread) {
+          setHasNewNotifications(true);
+        }
+      }
+    }, (err) => {
+      console.warn('Real-time events subscription notice:', err);
+    });
+    return unsub;
+  }, []);
+
+  // Mark notifications as read when tab is selected
+  useEffect(() => {
+    if (currentTab === 'notifications') {
+      localStorage.setItem('alimedia_last_viewed_notifications', Date.now().toString());
+      setHasNewNotifications(false);
+    }
+  }, [currentTab]);
 
   // Handle URL hash changes or routing
   useEffect(() => {
@@ -396,7 +554,6 @@ export default function App() {
     setIsSeeding(true);
     try {
       await seedInitialVerifiedData();
-      await loadData();
       showNotification('සත්‍යාපිත හීලෑ අලි වාර්තා සාර්ථකව ඇතුළත් කෙරිණි!');
     } catch (err: any) {
       alert(`Error: ${err.message || err}`);
@@ -427,6 +584,7 @@ export default function App() {
         }}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
+        hasNewNotifications={hasNewNotifications}
       />
 
       {/* Main Content Area */}
@@ -482,60 +640,90 @@ export default function App() {
             onToggleLanguage={toggleLanguage}
           />
         ) : currentTab === 'notifications' ? (
-          /* Notifications Tab: Real Cultural Calendar & Perahera Updates */
+          /* Notifications Tab: Real Cultural Calendar & General Notices / Updates */
           <div className="space-y-4 py-3 pb-24 animate-fadeIn">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-extrabold text-[#062E22] dark:text-emerald-200">
-                  {language === 'si' ? 'පෙරහැර සහ සංස්කෘතික නිවේදන' : 'Perahera & Cultural Notices'}
+                  {language === 'si' ? 'නිවේදන, පුවත් සහ උත්සව' : 'Notices, News & Festivals'}
                 </h2>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {language === 'si' ? 'හීලෑ අලි සහභාගී වන පෙරහැර කාලසටහන' : 'Festivals featuring Sri Lankan tuskers'}
+                  {language === 'si' ? 'අලි ඇතුන් පිළිබඳ පුවත්, යාවත්කාලීන කිරීම් සහ පෙරහැර කාලසටහන' : 'Platform updates, news and cultural event calendars'}
                 </p>
               </div>
               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
             </div>
 
-            <div className="space-y-3">
-              {events.map((ev) => (
-                <div
-                  key={ev.id || ev.title}
-                  className="bg-white dark:bg-[#121F1B] p-4 sm:p-5 rounded-3xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs space-y-2.5 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-extrabold text-[#062E22] dark:text-emerald-100">{ev.title}</h4>
-                      {ev.sinhalaTitle && (
-                        <p className="text-xs text-emerald-800 dark:text-emerald-300 font-sinhala">{ev.sinhalaTitle}</p>
+            <div className="space-y-4">
+              {events.length === 0 ? (
+                <div className="text-center py-12 bg-white dark:bg-[#121F1B] rounded-3xl border border-zinc-100 dark:border-zinc-800/50 p-6">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {language === 'si' ? 'තවමත් කිසිදු නිවේදනයක් පළ කර නොමැත.' : 'No announcements or notices available yet.'}
+                  </p>
+                </div>
+              ) : (
+                events.map((ev) => (
+                  <div
+                    key={ev.id || ev.title}
+                    className="bg-white dark:bg-[#121F1B] rounded-3xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs hover:shadow-sm transition-all overflow-hidden flex flex-col"
+                  >
+                    {/* Cover image with zoom effect */}
+                    {ev.coverImage && (
+                      <div className="w-full h-48 sm:h-56 bg-zinc-100 dark:bg-zinc-950 overflow-hidden relative border-b border-zinc-150 dark:border-zinc-800">
+                        <img
+                          src={ev.coverImage}
+                          alt={ev.title}
+                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                        />
+                      </div>
+                    )}
+
+                    <div className="p-4 sm:p-5 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <h4 className="text-sm font-extrabold text-[#062E22] dark:text-emerald-100 leading-tight">{ev.title}</h4>
+                          {ev.sinhalaTitle && (
+                            <p className="text-xs text-emerald-800 dark:text-emerald-300 font-sinhala leading-normal">{ev.sinhalaTitle}</p>
+                          )}
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border shrink-0 ${getNotificationTypeStyles(ev.type || 'other')}`}>
+                          {getNotificationTypeLabel(ev.type || 'other', language)}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">{ev.description}</p>
+
+                      {/* Display Location and Date only if at least one is specified */}
+                      {(ev.location || ev.date) && (
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 dark:text-zinc-400 pt-2 border-t border-zinc-100 dark:border-zinc-850 font-medium">
+                          {ev.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                              <span>{ev.location}</span>
+                            </span>
+                          )}
+                          {ev.date && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                              <span>{ev.date}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {ev.participatingElephants && ev.participatingElephants.length > 0 && (
+                        <div className="bg-[#FAF9F5] dark:bg-[#1A2C26] p-2.5 rounded-xl border border-zinc-200/80 dark:border-emerald-950/50 flex items-center gap-1.5 text-xs text-[#062E22] dark:text-emerald-100 mt-2">
+                          <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                          <span className="font-bold shrink-0">
+                            {language === 'si' ? 'සහභාගී වන ඇත්තු:' : 'Participating Elephants:'}
+                          </span>
+                          <span className="text-zinc-600 dark:text-zinc-300 truncate">{ev.participatingElephants.join(', ')}</span>
+                        </div>
                       )}
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300/40">
-                      Perahera
-                    </span>
                   </div>
-
-                  <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">{ev.description}</p>
-
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 dark:text-zinc-400 pt-2 border-t border-zinc-100 dark:border-zinc-800 font-medium">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                      <span>{ev.location}</span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                      <span>{ev.date}</span>
-                    </span>
-                  </div>
-
-                  {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                    <div className="bg-[#FAF9F5] dark:bg-[#1A2C26] p-2.5 rounded-xl border border-zinc-200/80 dark:border-emerald-950/50 flex items-center gap-1.5 text-xs text-[#062E22] dark:text-emerald-100">
-                      <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                      <span className="font-bold">සහභාගී වන ඇත්තු:</span>
-                      <span className="text-zinc-600 dark:text-zinc-300 truncate">{ev.participatingElephants.join(', ')}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         ) : null}
@@ -546,6 +734,7 @@ export default function App() {
         currentTab={currentTab}
         onSelectTab={handleTabChange}
         onOpenAdd={() => handleOpenCreatePost()}
+        hasNewNotifications={hasNewNotifications}
       />
 
       {/* Photo Lightbox */}

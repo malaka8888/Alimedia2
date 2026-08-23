@@ -30,5 +30,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+
+    // Real-time visitor presence tracking
+    match /visitors/{visitorId} {
+      allow read, write: if true;
+    }
   }
 }

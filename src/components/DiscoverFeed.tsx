@@ -43,7 +43,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   onOpenDirectory,
 }) => {
   const t = translations[language];
-  const { user, isFollowing, toggleFollowElephant } = useAuth();
+  const { user, profile, isFollowing, toggleFollowElephant } = useAuth();
   const [likes, setLikes] = useState<{ [id: string]: number }>({});
   const [userLiked, setUserLiked] = useState<{ [id: string]: boolean }>({});
   const [savedPosts, setSavedPosts] = useState<{ [id: string]: boolean }>({});
@@ -114,6 +114,14 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   };
 
   const handleLike = async (id: string, initialCount: number = 0, isPost = true) => {
+    if (!profile) {
+      alert(
+        language === 'si'
+          ? 'ඡායාරූප සහ Story වලට Like කිරීමට කරුණාකර පළමුව Google (Gmail) ගිණුමෙන් පිවිසෙන්න!'
+          : 'Please sign in with your Google (Gmail) account first to like photos and stories!'
+      );
+      return;
+    }
     const effectiveUid = getEffectiveUid();
     const postItem = isPost ? posts.find((p) => p.id === id) : null;
     const isCurrentlyLiked = userLiked[id] !== undefined
@@ -151,6 +159,14 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     isPost = true
   ) => {
     e.stopPropagation();
+    if (!profile) {
+      alert(
+        language === 'si'
+          ? 'ඡායාරූප සහ Story වලට Like කිරීමට කරුණාකර පළමුව Google (Gmail) ගිණුමෙන් පිවිසෙන්න!'
+          : 'Please sign in with your Google (Gmail) account first to like photos and stories!'
+      );
+      return;
+    }
     const effectiveUid = getEffectiveUid();
     const postItem = isPost ? posts.find((p) => p.id === id) : null;
 
