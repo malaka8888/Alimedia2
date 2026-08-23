@@ -11,7 +11,8 @@ import {
   orderBy,
   where,
   arrayRemove,
-  writeBatch
+  writeBatch,
+  setDoc
 } from 'firebase/firestore';
 import { db } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
@@ -120,7 +121,7 @@ export async function getElephants(): Promise<Elephant[]> {
       return list;
     })();
 
-    const list = await withTimeout(fetchPromise, 2500, [] as Elephant[]);
+    const list = await withTimeout(fetchPromise, 15000, [] as Elephant[]);
 
     if (list && list.length > 0) {
       try {
@@ -217,9 +218,9 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       return docRef.id;
     })();
 
-    const result = await withTimeout(writePromise, 15000, 'timeout_error');
+    const result = await withTimeout(writePromise, 60000, 'timeout_error');
     if (result === 'timeout_error') {
-      throw new Error('Firestore write timed out (15s limit reached)');
+      throw new Error('Firestore write timed out (60s limit reached)');
     }
     return result;
   } catch (error) {
@@ -243,9 +244,9 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
       return 'success';
     })();
 
-    const result = await withTimeout(writePromise, 15000, 'timeout_error');
+    const result = await withTimeout(writePromise, 60000, 'timeout_error');
     if (result === 'timeout_error') {
-      throw new Error('Firestore update timed out (15s limit reached)');
+      throw new Error('Firestore update timed out (60s limit reached)');
     }
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
@@ -288,9 +289,9 @@ export async function saveElephantsBatch(
       await batch.commit();
       return 'success';
     })();
-    const result = await withTimeout(commitPromise, 25000, 'timeout_error');
+    const result = await withTimeout(commitPromise, 60000, 'timeout_error');
     if (result === 'timeout_error') {
-      throw new Error('Firestore batch commit timed out (25s limit reached)');
+      throw new Error('Firestore batch commit timed out (60s limit reached)');
     }
   } catch (error) {
     console.error('Error in batch commit:', error);
@@ -470,31 +471,61 @@ export async function deleteElephantCascade(elephantId: string): Promise<{
  */
 export async function seedInitialVerifiedData(): Promise<number> {
   try {
+    // 1. Delete all existing elephants to make it fully clean and clear
     const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
+    const elephantSnap = await getDocs(elephantsCol);
+    const deleteEleBatch = writeBatch(db);
+    elephantSnap.forEach((docSnap) => {
+      deleteEleBatch.delete(docSnap.ref);
+    });
+    await deleteEleBatch.commit();
+    
+    // 2. Delete all existing cultural events
+    const eventsCol = collection(db, EVENTS_COLLECTION);
+    const eventSnap = await getDocs(eventsCol);
+    const deleteEventBatch = writeBatch(db);
+    eventSnap.forEach((docSnap) => {
+      deleteEventBatch.delete(docSnap.ref);
+    });
+    await deleteEventBatch.commit();
+
+    // 3. Delete all existing community posts to keep it completely clean
+    const postsCol = collection(db, POSTS_COLLECTION);
+    const postSnap = await getDocs(postsCol);
+    const deletePostBatch = writeBatch(db);
+    postSnap.forEach((docSnap) => {
+      deletePostBatch.delete(docSnap.ref);
+    });
+    await deletePostBatch.commit();
+
+    // Now seed fresh records with stable IDs
     let count = 0;
+    // We can write elephants in batches to be super fast and robust
+    const seedBatch = writeBatch(db);
     
     for (const elephant of INITIAL_VERIFIED_ELEPHANTS) {
-      await addDoc(elephantsCol, {
-        ...elephant,
+      const { id, ...data } = elephant;
+      const docRef = doc(db, ELEPHANTS_COLLECTION, id || `ele_${count}`);
+      seedBatch.set(docRef, {
+        ...data,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       count++;
     }
 
-    // Also seed default cultural events if empty
-    const eventsCol = collection(db, EVENTS_COLLECTION);
-    const eventSnap = await getDocs(eventsCol);
-    if (eventSnap.empty) {
-      for (const ev of INITIAL_EVENTS) {
-        await addDoc(eventsCol, {
-          ...ev,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
+    // Also seed default cultural events with their defined IDs
+    for (const ev of INITIAL_EVENTS) {
+      const { id, ...data } = ev;
+      const docRef = doc(db, EVENTS_COLLECTION, id || `ev_${count}`);
+      seedBatch.set(docRef, {
+        ...data,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     }
 
+    await seedBatch.commit();
     return count;
   } catch (error) {
     console.error('Error seeding verified elephant records:', error);
@@ -534,7 +565,7 @@ export async function getCulturalEvents(): Promise<CulturalEvent[]> {
       return events;
     })();
 
-    const events = await withTimeout(fetchPromise, 2500, [] as CulturalEvent[]);
+    const events = await withTimeout(fetchPromise, 15000, [] as CulturalEvent[]);
 
     if (events && events.length > 0) {
       try {

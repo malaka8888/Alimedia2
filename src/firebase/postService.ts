@@ -203,7 +203,7 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       return validPosts;
     })();
 
-    const posts = await withTimeout(fetchPromise, 2500, [] as ElephantPost[]);
+    const posts = await withTimeout(fetchPromise, 15000, [] as ElephantPost[]);
 
     if (posts && posts.length > 0) {
       try {
