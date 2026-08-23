@@ -207,12 +207,20 @@ export async function getElephantById(id: string): Promise<Elephant | null> {
 export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   try {
     const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
-    const docRef = await addDoc(elephantsCol, {
-      ...elephantData,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    return docRef.id;
+    const writePromise = (async () => {
+      const docRef = await addDoc(elephantsCol, {
+        ...elephantData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return docRef.id;
+    })();
+
+    const result = await withTimeout(writePromise, 8000, 'timeout_error');
+    if (result === 'timeout_error') {
+      throw new Error('Firestore write timed out (8s limit reached)');
+    }
+    return result;
   } catch (error) {
     console.error('Error adding elephant to Firestore:', error);
     throw error;
@@ -226,10 +234,18 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
   try {
     const docRef = doc(db, ELEPHANTS_COLLECTION, id);
     const { id: _, ...rest } = elephantData;
-    await updateDoc(docRef, {
-      ...rest,
-      updatedAt: serverTimestamp(),
-    });
+    const writePromise = (async () => {
+      await updateDoc(docRef, {
+        ...rest,
+        updatedAt: serverTimestamp(),
+      });
+      return 'success';
+    })();
+
+    const result = await withTimeout(writePromise, 8000, 'timeout_error');
+    if (result === 'timeout_error') {
+      throw new Error('Firestore update timed out (8s limit reached)');
+    }
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
     throw error;

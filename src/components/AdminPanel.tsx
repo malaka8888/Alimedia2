@@ -108,7 +108,7 @@ const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, qualit
 interface AdminPanelProps {
   elephants: Elephant[];
   events: CulturalEvent[];
-  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>;
+  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
   onDeleteElephant: (id: string) => Promise<{
     deletedElephantName: string;
     postsDeleted: number;

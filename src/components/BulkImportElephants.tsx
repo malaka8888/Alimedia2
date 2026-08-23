@@ -26,7 +26,7 @@ import { Language } from '../utils/translations';
 
 interface BulkImportElephantsProps {
   existingElephants: Elephant[];
-  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>;
+  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
   language: Language;
   onFinished: () => void;
 }
@@ -831,7 +831,8 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
 
         const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
 
-        await onSaveElephant(payload, targetId);
+        // pass true to skipRefresh to prevent serial downloads of the entire DB
+        await onSaveElephant(payload, targetId, true);
 
         successCount++;
         if (targetId) {
@@ -848,6 +849,15 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
       }
 
       setImportLogs([...logs]);
+    }
+
+    // Trigger exactly ONE final single update to fetch fresh database state
+    if (successCount > 0) {
+      try {
+        await onSaveElephant({ name: '__REFRESH__' } as any);
+      } catch (e) {
+        console.warn('Final state refresh notice:', e);
+      }
     }
 
     setImportProgress({ current: total, total, success: successCount, failed: failCount });

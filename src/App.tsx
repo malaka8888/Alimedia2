@@ -280,17 +280,29 @@ export default function App() {
 
   const handleSaveElephant = async (
     elephantData: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>,
-    id?: string
+    id?: string,
+    skipRefresh?: boolean
   ) => {
+    if (elephantData && elephantData.name === '__REFRESH__') {
+      const fresh = await getElephants();
+      setElephants(fresh);
+      return;
+    }
     if (id) {
       await updateElephant(id, elephantData);
-      showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
+      if (!skipRefresh) {
+        showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
+      }
     } else {
       await addElephant(elephantData);
-      showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
+      if (!skipRefresh) {
+        showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
+      }
     }
-    const fresh = await getElephants();
-    setElephants(fresh);
+    if (!skipRefresh) {
+      const fresh = await getElephants();
+      setElephants(fresh);
+    }
   };
 
   const handleDeleteElephant = async (id: string) => {
