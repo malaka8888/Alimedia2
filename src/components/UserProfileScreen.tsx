@@ -367,19 +367,16 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           {onToggleDarkMode && (
             <button
               onClick={onToggleDarkMode}
-              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-black hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-white/10"
+              className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-black hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-200/60 dark:border-white/10 active:scale-98"
             >
-              {darkMode ? (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-zinc-400 dark:text-white" />
-                  <span>{language === 'si' ? 'Light Mode' : 'Light Mode'}</span>
-                </>
-              ) : (
-                <>
+              <div className={`transition-transform duration-500 ease-out ${darkMode ? 'rotate-180 scale-110' : 'rotate-0 scale-100'} flex items-center justify-center`}>
+                {darkMode ? (
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
                   <Moon className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-                  <span>{language === 'si' ? 'Dark Mode' : 'Dark Mode'}</span>
-                </>
-              )}
+                )}
+              </div>
+              <span>{darkMode ? (language === 'si' ? 'Light Mode' : 'Light Mode') : (language === 'si' ? 'Dark Mode' : 'Dark Mode')}</span>
             </button>
           )}
 

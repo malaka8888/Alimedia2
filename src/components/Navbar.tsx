@@ -118,15 +118,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Dark Mode Toggle */}
           <button
             onClick={onToggleDarkMode}
-            className="p-2 rounded-full bg-white dark:bg-[#121F1B] hover:bg-zinc-100 dark:hover:bg-[#1A2C27] border border-zinc-200 dark:border-emerald-900/40 text-[#062E22] dark:text-amber-400 transition-colors cursor-pointer shadow-2xs"
+            className="p-2 rounded-full bg-white dark:bg-[#121F1B] hover:bg-zinc-100 dark:hover:bg-[#1A2C27] border border-zinc-200 dark:border-emerald-900/40 text-[#062E22] dark:text-amber-400 transition-all duration-300 cursor-pointer shadow-2xs active:scale-90"
             title={darkMode ? (language === 'si' ? 'Light Mode වෙත මාරුවන්න' : 'Switch to Light Mode') : (language === 'si' ? 'Dark Mode වෙත මාරුවන්න' : 'Switch to Dark Mode')}
             aria-label="Toggle Dark / Light Theme"
           >
-            {darkMode ? (
-              <Sun className="w-4 h-4 text-amber-400 animate-fadeIn" />
-            ) : (
-              <Moon className="w-4 h-4 text-emerald-800 animate-fadeIn" />
-            )}
+            <div className={`transition-transform duration-500 ease-out ${darkMode ? 'rotate-180 scale-110' : 'rotate-0 scale-100'}`}>
+              {darkMode ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-emerald-800" />
+              )}
+            </div>
           </button>
 
           {/* Language Toggle */}
