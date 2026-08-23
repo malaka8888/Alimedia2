@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
@@ -21,9 +21,16 @@ const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatab
 
 // Use initializeFirestore with experimentalForceLongPolling to support mobile networks in Sri Lanka (e.g. Dialog/Mobitel)
 // that throttle or drop long-lived WebSocket/gRPC streams, preventing infinite loading.
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-}, dbId);
+// Wrap in try-catch with getFirestore fallback to guarantee it is initialized exactly once even during reload/evaluation.
+let dbInstance;
+try {
+  dbInstance = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  }, dbId);
+} catch (e) {
+  dbInstance = getFirestore(app, dbId);
+}
 
+export const db = dbInstance;
 export const auth = getAuth(app);
 export default app;

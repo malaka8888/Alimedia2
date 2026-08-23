@@ -20,10 +20,13 @@ import {
   UserCheck,
   CheckCheck,
   DatabaseZap,
-  HelpCircle
+  HelpCircle,
+  X
 } from 'lucide-react';
 import { Language } from '../utils/translations';
 import { compressBase64Image } from '../utils/imageCompressor';
+import { db } from '../firebase/config';
+import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 
 
 interface BulkImportElephantsProps {
@@ -127,6 +130,14 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
   const [importLogs, setImportLogs] = useState<string[]>([]);
   const [importComplete, setImportComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cancelRef = useRef<boolean>(false);
+
+  const handleCancelImport = () => {
+    cancelRef.current = true;
+    const logs = [...importLogs];
+    logs.push(language === 'si' ? '⚠️ පරිශීලකයා විසින් ඇතුළත් කිරීම අවලංගු කරන ලදී.' : '⚠️ Import cancelled by the user.');
+    setImportLogs(logs);
+  };
 
   // -------------------------------------------------------------
   // 1. TEMPLATES (Excel .xlsx & CSV .csv)
@@ -809,6 +820,18 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
   // -------------------------------------------------------------
   // 5. EXECUTE IMPORT
   // -------------------------------------------------------------
+  const generateDeterministicId = (name: string): string => {
+    if (!name) return `ele_${Math.random().toString(36).substring(2, 10)}`;
+    const normalized = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]/g, '');
+    return `ele_${normalized || Math.random().toString(36).substring(2, 10)}`;
+  };
+
+  // -------------------------------------------------------------
+  // 5. EXECUTE IMPORT (Chunked, Idempotent, Retryable, Cancellable)
+  // -------------------------------------------------------------
   const handleStartImport = async () => {
     const validRows = parsedRows.filter((r) => r.isValid);
     if (validRows.length === 0) {
@@ -816,27 +839,46 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
       return;
     }
 
+    if (isImporting) return;
+
     setIsImporting(true);
     setImportComplete(false);
+    cancelRef.current = false;
+
     const total = validRows.length;
     let successCount = 0;
     let failCount = 0;
     const logs: string[] = [];
 
+    logs.push(language === 'si' ? 'දත්ත ඇතුළත් කිරීම ආරම්භ කරන ලදී...' : 'Starting bulk import process...');
+    setImportLogs([...logs]);
     setImportProgress({ current: 0, total, success: 0, failed: 0 });
 
-    if (onSaveElephantsBatch) {
-      const operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string }[] = [];
-      logs.push(language === 'si' ? 'දත්ත සකසමින් සහ ඡායාරූප සම්පීඩනය කරමින්...' : 'Preparing data and compressing images...');
+    const CHUNK_SIZE = 5;
+
+    for (let chunkStart = 0; chunkStart < total; chunkStart += CHUNK_SIZE) {
+      if (cancelRef.current) {
+        logs.push(language === 'si' ? '🛑 ඇතුළත් කිරීම පරිශීලකයා විසින් අවලංගු කරන ලදී.' : '🛑 Import process aborted by user.');
+        setImportLogs([...logs]);
+        break;
+      }
+
+      const chunk = validRows.slice(chunkStart, chunkStart + CHUNK_SIZE);
+      logs.push(
+        language === 'si'
+          ? `වාර්තා ${chunkStart + 1} - ${Math.min(chunkStart + CHUNK_SIZE, total)} සකසමින් (ඡායාරූප සම්පීඩනය කරමින්)...`
+          : `Processing records ${chunkStart + 1} - ${Math.min(chunkStart + CHUNK_SIZE, total)} of ${total} (compressing images)...`
+      );
       setImportLogs([...logs]);
 
-      for (let i = 0; i < total; i++) {
-        const row = validRows[i];
-        setImportProgress({ current: i + 1, total, success: 0, failed: 0 });
+      const chunkOperations: { id: string; payload: any; isExisting: boolean; originalName: string }[] = [];
 
+      for (const row of chunk) {
         try {
           const isMatch = row.isExistingMatch && row.matchedElephant;
-          const targetId = (importMode !== 'add_only' && isMatch) ? row.matchedId : undefined;
+          const targetId = (importMode !== 'add_only' && isMatch)
+            ? row.matchedId!
+            : (row.id || generateDeterministicId(row.name));
 
           const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
 
@@ -856,86 +898,137 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
             );
           }
 
-          operations.push({ data: payload, id: targetId });
-        } catch (e: any) {
+          chunkOperations.push({
+            id: targetId,
+            payload,
+            isExisting: !!(importMode !== 'add_only' && isMatch),
+            originalName: row.name,
+          });
+        } catch (prepErr: any) {
           failCount++;
-          logs.push(`✗ [${i + 1}/${total}] ${row.name} - Preprocessing Error: ${e.message || e}`);
+          logs.push(`✗ Preprocessing failed for ${row.name}: ${prepErr.message || prepErr}`);
           setImportLogs([...logs]);
+          setImportProgress((prev) =>
+            prev ? { ...prev, current: prev.current + 1, failed: prev.failed + 1 } : null
+          );
         }
       }
 
-      // Commit batch in exactly one network trip
-      if (operations.length > 0) {
+      if (chunkOperations.length === 0) continue;
+
+      let chunkSuccess = false;
+      const MAX_RETRIES = 3;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+        if (cancelRef.current) break;
+
         try {
-          logs.push(
-            language === 'si' 
-              ? `වාර්තා ${operations.length} ක් එකවර දත්ත ගබඩාවට ඇතුළත් කරමින් (Batch Uploading)...` 
-              : `Uploading all ${operations.length} records in a single batch...`
-          );
+          const batch = writeBatch(db);
+
+          chunkOperations.forEach((op) => {
+            const docRef = doc(db, 'elephants', op.id);
+            const dataToSet = {
+              ...op.payload,
+              updatedAt: serverTimestamp(),
+            };
+            if (!op.isExisting) {
+              dataToSet.createdAt = serverTimestamp();
+            }
+            batch.set(docRef, dataToSet, { merge: true });
+          });
+
+          // Wait with a promise timeout wrapper to catch Firestore hanging
+          const commitPromise = batch.commit();
+          const timeoutMs = 45000;
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs);
+          });
+
+          await Promise.race([commitPromise, timeoutPromise]);
+
+          // Success!
+          chunkSuccess = true;
+          successCount += chunkOperations.length;
+
+          chunkOperations.forEach((op) => {
+            if (op.isExisting) {
+              logs.push(`✓ ${op.originalName} - Merged (Idempotent)`);
+            } else {
+              logs.push(`✓ ${op.originalName} - Added (Idempotent ID)`);
+            }
+          });
           setImportLogs([...logs]);
-
-          await onSaveElephantsBatch(operations);
-
-          successCount += operations.length;
-          logs.push(
-            language === 'si' 
-              ? `✓ සියලුම වාර්තා ${successCount} සාර්ථකව ඇතුළත් කර අවසන් විය!` 
-              : `✓ All ${successCount} records successfully imported in a single batch!`
-          );
-        } catch (err: any) {
-          failCount += operations.length;
-          logs.push(`✗ Batch Upload Error: ${err.message || err}`);
-        }
-        setImportLogs([...logs]);
-      }
-    } else {
-      // Fallback to sequential individual uploads (if batch save isn't passed)
-      for (let i = 0; i < total; i++) {
-        const row = validRows[i];
-        setImportProgress({ current: i + 1, total, success: successCount, failed: failCount });
-
-        try {
-          const isMatch = row.isExistingMatch && row.matchedElephant;
-          const targetId = (importMode !== 'add_only' && isMatch) ? row.matchedId : undefined;
-
-          const payload = buildSmartMergedPayload(row, (importMode !== 'add_only' && isMatch) ? row.matchedElephant : undefined);
-
-          if (payload.photos && payload.photos.length > 0) {
-            payload.photos = await Promise.all(
-              payload.photos.map(async (photo) => {
-                if (photo.startsWith('data:image')) {
-                  try {
-                    return await compressBase64Image(photo, { maxDimension: 600, quality: 0.6 });
-                  } catch (e) {
-                    return photo;
-                  }
+          setImportProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  current: Math.min(prev.current + chunkOperations.length, total),
+                  success: prev.success + chunkOperations.length,
                 }
-                return photo;
-              })
-            );
-          }
-
-          await onSaveElephant(payload, targetId, true);
-
-          successCount++;
-          if (targetId) {
-            logs.push(`✓ [${i + 1}/${total}] ${row.name} - Updated`);
-          } else {
-            logs.push(`✓ [${i + 1}/${total}] ${row.name} - Added`);
-          }
+              : null
+          );
+          break; // Exit retry loop
         } catch (err: any) {
-          failCount++;
-          logs.push(`✗ [${i + 1}/${total}] ${row.name} - Error: ${err.message || err}`);
-        }
-        setImportLogs([...logs]);
-      }
+          const isTimeout = err.message === 'TIMEOUT';
+          const errorCode = err.code || 'unknown';
+          const errorMessage = err.message || String(err);
 
-      if (successCount > 0) {
-        try {
-          await onSaveElephant({ name: '__REFRESH__' } as any);
-        } catch (e) {
-          console.warn('Final state refresh notice:', e);
+          // Determine retryable error
+          const isRetryable =
+            isTimeout ||
+            errorCode === 'unavailable' ||
+            errorCode === 'deadline-exceeded' ||
+            errorCode === 'resource-exhausted' ||
+            errorCode === 'internal' ||
+            errorCode === 'aborted' ||
+            errorMessage.toLowerCase().includes('offline') ||
+            errorMessage.toLowerCase().includes('network') ||
+            errorMessage.toLowerCase().includes('timeout');
+
+          if (isRetryable && attempt <= MAX_RETRIES) {
+            const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+            logs.push(
+              language === 'si'
+                ? `⚠️ තාවකාලික ජාල දෝෂයකි (උත්සාහය: ${attempt}). තත්පර ${Math.round(backoffMs / 1000)} කින් නැවත උත්සාහ කරයි...`
+                : `⚠️ Temporary write error (Attempt ${attempt}/${MAX_RETRIES}). Retrying in ${Math.round(backoffMs / 1000)}s...`
+            );
+            setImportLogs([...logs]);
+            await new Promise((r) => setTimeout(r, backoffMs));
+          } else {
+            // Permanent failure
+            failCount += chunkOperations.length;
+            const errorLabel = isTimeout ? 'Timeout' : `Error code: ${errorCode}`;
+            logs.push(`✗ Batch chunk upload failed permanently [${errorLabel}]: ${errorMessage}`);
+            chunkOperations.forEach((op) => {
+              logs.push(`  - Failed: ${op.originalName}`);
+            });
+            setImportLogs([...logs]);
+            setImportProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    current: Math.min(prev.current + chunkOperations.length, total),
+                    failed: prev.failed + chunkOperations.length,
+                  }
+                : null
+            );
+            break; // Exit retry loop
+          }
         }
+      }
+    }
+
+    // Refresh memory database view
+    if (successCount > 0) {
+      try {
+        logs.push(language === 'si' ? 'දත්ත ගබඩාව යාවත්කාලීන කරමින්...' : 'Refreshing local elephant registry...');
+        setImportLogs([...logs]);
+        await onSaveElephant({ name: '__REFRESH__' } as any);
+        logs.push(language === 'si' ? '✓ දත්ත ගබඩාව සාර්ථකව යාවත්කාලීන කරන ලදී!' : '✓ Elephant registry refreshed successfully!');
+        setImportLogs([...logs]);
+      } catch (e) {
+        console.warn('Final state refresh notice:', e);
       }
     }
 
@@ -1267,12 +1360,24 @@ export const BulkImportElephants: React.FC<BulkImportElephantsProps> = ({
                 setFile(null);
                 setImportProgress(null);
               }}
-              className="px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              disabled={isImporting}
+              className="px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
             >
               {language === 'si' ? 'සියල්ල ඉවත් කරන්න (Clear)' : 'Clear Table'}
             </button>
 
             <div className="flex items-center gap-2">
+              {isImporting && (
+                <button
+                  type="button"
+                  onClick={handleCancelImport}
+                  className="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95"
+                >
+                  <X className="w-4 h-4" />
+                  <span>{language === 'si' ? 'අවලංගු කරන්න (Cancel)' : 'Cancel Import'}</span>
+                </button>
+              )}
+
               {importComplete ? (
                 <button
                   onClick={onFinished}
