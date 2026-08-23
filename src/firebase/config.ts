@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
@@ -15,10 +15,15 @@ const firebaseConfig = {
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// If a specific custom database ID is configured, initialize it with that ID
-export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+  ? firebaseConfig.firestoreDatabaseId
+  : undefined;
+
+// Use initializeFirestore with experimentalForceLongPolling to support mobile networks in Sri Lanka (e.g. Dialog/Mobitel)
+// that throttle or drop long-lived WebSocket/gRPC streams, preventing infinite loading.
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, dbId);
 
 export const auth = getAuth(app);
 export default app;

@@ -216,9 +216,9 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       return docRef.id;
     })();
 
-    const result = await withTimeout(writePromise, 8000, 'timeout_error');
+    const result = await withTimeout(writePromise, 15000, 'timeout_error');
     if (result === 'timeout_error') {
-      throw new Error('Firestore write timed out (8s limit reached)');
+      throw new Error('Firestore write timed out (15s limit reached)');
     }
     return result;
   } catch (error) {
@@ -242,9 +242,9 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
       return 'success';
     })();
 
-    const result = await withTimeout(writePromise, 8000, 'timeout_error');
+    const result = await withTimeout(writePromise, 15000, 'timeout_error');
     if (result === 'timeout_error') {
-      throw new Error('Firestore update timed out (8s limit reached)');
+      throw new Error('Firestore update timed out (15s limit reached)');
     }
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
