@@ -34,6 +34,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Pro
   ]);
 }
 
+// Timeout helper that rejects the promise on timeout for write operations
+function withTimeoutReject<T>(promise: Promise<T>, timeoutMs = 15000, errorMsg = 'Operation timed out'): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), timeoutMs))
+  ]);
+}
+
 /**
  * Initial default cultural events / perahera updates
  */
@@ -218,12 +226,12 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       updatedAt: new Date(),
     };
 
-    // Save to Firestore locally and in the background immediately
-    // DO NOT AWAIT THE SERVER RESPONSE. Let Firestore's cache handle it instantly.
-    // This guarantees < 5ms save time!
-    setDoc(docRef, payload).catch((error) => {
-      console.warn('Background Firestore write sync notice:', error);
-    });
+    // Await database write with 15-second timeout for full robustness
+    await withTimeoutReject(
+      setDoc(docRef, payload),
+      15000,
+      'Database write timed out (15s limit). Please check your internet connection and try again.'
+    );
 
     return id;
   } catch (error) {
@@ -245,11 +253,12 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
       updatedAt: new Date(),
     };
 
-    // Save to Firestore locally and in the background immediately
-    // This allows toggles and edits to be zero latency!
-    updateDoc(docRef, payload).catch((error) => {
-      console.warn(`Background updateDoc notice for ${id}:`, error);
-    });
+    // Await database update with 15-second timeout for full robustness
+    await withTimeoutReject(
+      updateDoc(docRef, payload),
+      15000,
+      'Database update timed out (15s limit). Please check your internet connection and try again.'
+    );
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
     throw error;

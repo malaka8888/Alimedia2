@@ -73,7 +73,7 @@ export async function saveCloudinaryConfig(config: CloudinaryConfig): Promise<vo
 
 /**
  * Uploads a base64 image or a File object directly to Cloudinary using Unsigned Uploads.
- * If Cloudinary is disabled, unconfigured, or the upload fails, it returns the input image as-is (graceful fallback).
+ * If Cloudinary is disabled, unconfigured, or the upload fails, it throws an error to prevent saving Base64 in Firestore.
  */
 export async function uploadImageToCloudinary(imageSource: string | File): Promise<string> {
   if (!imageSource) return '';
@@ -81,11 +81,7 @@ export async function uploadImageToCloudinary(imageSource: string | File): Promi
   try {
     const config = await getCloudinaryConfig();
     if (!config.enabled || !config.cloudName || !config.uploadPreset) {
-      // If it's a File and Cloudinary is disabled, we must convert it to base64 so it can be saved locally
-      if (imageSource instanceof File) {
-        return await fileToBase64(imageSource);
-      }
-      return imageSource; // Fallback to base64
+      throw new Error('Cloudinary integration is disabled or not configured in settings.');
     }
 
     const formData = new FormData();
@@ -94,9 +90,9 @@ export async function uploadImageToCloudinary(imageSource: string | File): Promi
 
     const url = `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`;
     
-    // Add 10-second timeout using AbortController to prevent infinite hanging
+    // Add 15-second timeout using AbortController to prevent infinite hanging
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -119,12 +115,9 @@ export async function uploadImageToCloudinary(imageSource: string | File): Promi
     }
 
     throw new Error('Cloudinary response did not contain secure_url or url');
-  } catch (err) {
-    console.error('Cloudinary upload error, falling back to local data:', err);
-    if (imageSource instanceof File) {
-      return await fileToBase64(imageSource);
-    }
-    return imageSource;
+  } catch (err: any) {
+    console.error('Cloudinary upload error:', err);
+    throw new Error(err.message || 'Unknown Cloudinary error during photo upload.');
   }
 }
 

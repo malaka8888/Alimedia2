@@ -448,50 +448,59 @@ export default function App() {
       return;
     }
 
-    if (id) {
-      // Optimistic state update for edit
-      setElephants((prev) =>
-        prev.map((el) => (el.id === id ? { ...el, ...elephantData, updatedAt: new Date() } : el))
-      );
-      if (selectedElephant && selectedElephant.id === id) {
-        setSelectedElephant((prev) => (prev ? { ...prev, ...elephantData, updatedAt: new Date() } : null));
-      }
+    try {
+      if (id) {
+        // Save to Firestore first
+        await updateElephant(id, elephantData);
 
-      await updateElephant(id, elephantData);
-      if (!skipRefresh) {
-        showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
-      }
-    } else {
-      // Optimistic state update for add
-      const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-      const newElephant: Elephant = {
-        ...elephantData,
-        id: tempId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      
-      setElephants((prev) => [newElephant, ...prev]);
+        // Update local state on success
+        const updatedObj: Elephant = {
+          ...elephantData,
+          id,
+          updatedAt: new Date(),
+        };
 
-      const realId = await addElephant(elephantData);
-      
-      // Swap tempId with the real ID
-      setElephants((prev) =>
-        prev.map((el) => (el.id === tempId ? { ...el, id: realId } : el))
-      );
+        setElephants((prev) =>
+          prev.map((el) => (el.id === id ? updatedObj : el))
+        );
 
-      if (!skipRefresh) {
-        showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
-      }
-    }
-
-    if (!skipRefresh) {
-      // Background cache sync
-      getElephants().then((fresh) => {
-        if (fresh && fresh.length > 0) {
-          setElephants(fresh);
+        if (selectedElephant && selectedElephant.id === id) {
+          setSelectedElephant(updatedObj);
         }
-      }).catch(() => {});
+
+        if (!skipRefresh) {
+          showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
+        }
+      } else {
+        // Save to Firestore first
+        const realId = await addElephant(elephantData);
+
+        // Update local state on success
+        const newElephant: Elephant = {
+          ...elephantData,
+          id: realId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        setElephants((prev) => [newElephant, ...prev]);
+
+        if (!skipRefresh) {
+          showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
+        }
+      }
+
+      if (!skipRefresh) {
+        // Background cache sync
+        getElephants().then((fresh) => {
+          if (fresh && fresh.length > 0) {
+            setElephants(fresh);
+          }
+        }).catch(() => {});
+      }
+    } catch (error) {
+      console.error('Failed to save elephant:', error);
+      throw error; // Propagate error to caller (AdminPanel) so it can reset loading states and show useful messages
     }
   };
 

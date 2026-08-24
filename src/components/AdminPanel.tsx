@@ -454,7 +454,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const cleanedPhotos = formData.photos.filter((p) => p && p.trim().length > 0);
+      // --- CLOUDINARY UPLOAD FLOW FOR UNSAVED/BASE64 PHOTOS ---
+      const uploadedPhotos: string[] = [];
+      for (const photo of formData.photos) {
+        if (!photo || photo.trim().length === 0) continue;
+        
+        if (photo.startsWith('data:image/') || photo.startsWith('blob:')) {
+          // It's a local base64/blob image, we MUST upload it to Cloudinary now!
+          try {
+            const uploadedUrl = await uploadImageToCloudinary(photo);
+            if (!uploadedUrl || uploadedUrl.startsWith('data:image/')) {
+              throw new Error('Cloudinary returned an invalid URL or fell back to base64.');
+            }
+            uploadedPhotos.push(uploadedUrl);
+          } catch (cloudinaryErr: any) {
+            console.error('Failed to upload image during elephant save:', cloudinaryErr);
+            throw new Error(`Cloudinary upload failed: ${cloudinaryErr.message || cloudinaryErr}`);
+          }
+        } else {
+          // It's already a hosted URL (e.g. res.cloudinary.com or unsplash or external)
+          uploadedPhotos.push(photo);
+        }
+      }
+
+      const cleanedPhotos = uploadedPhotos.filter((p) => p && p.trim().length > 0);
       if (cleanedPhotos.length === 0) {
         cleanedPhotos.push(PRESET_ELEPHANT_PHOTOS[0]);
       }

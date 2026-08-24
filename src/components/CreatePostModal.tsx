@@ -151,8 +151,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       if (imageToUse && imageToUse.startsWith('data:image/')) {
         try {
           finalPhotoUrl = await uploadImageToCloudinary(imageToUse);
-        } catch (cloudinaryErr) {
-          console.error('Failed to upload to Cloudinary, falling back to base64:', cloudinaryErr);
+          if (!finalPhotoUrl || finalPhotoUrl.startsWith('data:image/')) {
+            throw new Error('Cloudinary returned an invalid URL or fell back to base64.');
+          }
+        } catch (cloudinaryErr: any) {
+          console.error('Failed to upload to Cloudinary:', cloudinaryErr);
+          setErrorMsg(language === 'si' 
+            ? `ඡායාරූපය Upload කිරීම අසාර්ථක විය: ${cloudinaryErr.message || cloudinaryErr}` 
+            : `Failed to upload photo to Cloudinary: ${cloudinaryErr.message || cloudinaryErr}`
+          );
+          setIsSubmitting(false);
+          return; // Stop the save operation!
         }
       }
 
