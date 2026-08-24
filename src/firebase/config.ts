@@ -19,22 +19,25 @@ const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatab
   ? firebaseConfig.firestoreDatabaseId
   : undefined;
 
-// Initialize Firestore using standard getFirestore or fallback to guarantee it is initialized exactly once.
-// Do NOT force long-polling by default in all environments since it can cause 60-second gateway timeouts on hosting providers like Vercel.
+// Initialize Firestore with experimentalForceLongPolling enabled by default to prevent gRPC / WebSocket connection drops in Sri Lanka (e.g. Dialog/Mobitel)
 let dbInstance;
 try {
   if (dbId) {
-    dbInstance = getFirestore(app, dbId);
+    dbInstance = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, dbId);
   } else {
-    dbInstance = getFirestore(app);
+    dbInstance = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
   }
 } catch (e) {
-  console.warn('Standard getFirestore failed or already initialized, attempting alternative init:', e);
+  console.warn('Standard initializeFirestore with long polling failed or already initialized, attempting fallback:', e);
   try {
     if (dbId) {
-      dbInstance = initializeFirestore(app, {}, dbId);
+      dbInstance = getFirestore(app, dbId);
     } else {
-      dbInstance = initializeFirestore(app, {});
+      dbInstance = getFirestore(app);
     }
   } catch (innerErr) {
     console.error('Fatal Firestore initialization error:', innerErr);

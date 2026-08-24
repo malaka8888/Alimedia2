@@ -12,6 +12,12 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Diagnostics test writes for connection health checking
+    match /diagnostics/{diagnosticId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Community user-submitted elephant posts & admin moderation
     match /elephant_posts/{postId} {
       allow read: if true;
