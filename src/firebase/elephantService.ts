@@ -14,7 +14,7 @@ import {
   writeBatch,
   setDoc
 } from 'firebase/firestore';
-import { db } from './config';
+import { db, auth } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
 import { INITIAL_VERIFIED_ELEPHANTS } from '../data/initialVerifiedData';
 
@@ -220,11 +220,16 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
     const docRef = doc(elephantsCol); // client-side ID generation is instant!
     const id = docRef.id;
 
+    console.log('[5] Firestore document reference created:', id);
+
     const payload = {
       ...elephantData,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    console.log('[6] Firestore write started for adding elephant:', id);
+    console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
 
     // Await database write with 15-second timeout for full robustness
     await withTimeoutReject(
@@ -233,6 +238,7 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       'Database write timed out (15s limit). Please check your internet connection and try again.'
     );
 
+    console.log('[7] Firestore write completed successfully for adding elephant:', id);
     return id;
   } catch (error) {
     console.error('Error adding elephant to Firestore:', error);
@@ -248,10 +254,15 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
     const docRef = doc(db, ELEPHANTS_COLLECTION, id);
     const { id: _, ...rest } = elephantData;
 
+    console.log('[5] Firestore document reference created (update):', id);
+
     const payload = {
       ...rest,
       updatedAt: new Date(),
     };
+
+    console.log('[6] Firestore write started for updating elephant:', id);
+    console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
 
     // Await database update with 15-second timeout for full robustness
     await withTimeoutReject(
@@ -259,9 +270,46 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
       15000,
       'Database update timed out (15s limit). Please check your internet connection and try again.'
     );
+
+    console.log('[7] Firestore write completed successfully for updating elephant:', id);
   } catch (error) {
     console.error(`Error updating elephant ${id}:`, error);
     throw error;
+  }
+}
+
+/**
+ * Temporary diagnostic test write to Firestore
+ */
+export async function runFirestoreDiagnosticTest(): Promise<string> {
+  try {
+    console.log('[DIAGNOSTIC] [1] Starting connection test write...');
+    // We write to a dedicated collection 'diagnostics' to avoid polluting elephant data
+    const docRef = doc(collection(db, 'diagnostics'), 'test_connection');
+    
+    console.log('[DIAGNOSTIC] [2] Target doc path:', docRef.path);
+    console.log('[DIAGNOSTIC] [3] auth.currentUser?.uid:', auth.currentUser?.uid || 'no-user-auth');
+    
+    const payload = {
+      test: true,
+      timestamp: serverTimestamp(),
+      testedBy: 'Admin Console Diagnostic',
+      testedAt: new Date(),
+    };
+    
+    console.log('[DIAGNOSTIC] [4] Submitting payload to Firestore...');
+    // Await with 10-second timeout
+    await withTimeoutReject(
+      setDoc(docRef, payload),
+      10000,
+      'Diagnostic Firestore write timed out (10s limit). Connection or configuration issue.'
+    );
+    
+    console.log('[DIAGNOSTIC] [5] Write completed successfully!');
+    return 'SUCCESS';
+  } catch (err: any) {
+    console.error('[DIAGNOSTIC] Test write failed:', err);
+    throw err;
   }
 }
 

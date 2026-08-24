@@ -62,6 +62,79 @@ import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService
 import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
 import { resetAllCountsInFirestore } from '../firebase/migrationService';
 import { getCloudinaryConfig, saveCloudinaryConfig, uploadImageToCloudinary } from '../firebase/cloudinaryService';
+import { runFirestoreDiagnosticTest } from '../firebase/elephantService';
+import { auth } from '../firebase/config';
+
+export interface AdminPhotoSelection {
+  id: string;
+  file: File | null;
+  url: string;
+  publicId: string;
+  status: 'pending' | 'compressing' | 'uploading' | 'success' | 'failed';
+  error?: string;
+  progress?: number;
+}
+
+// Helper to validate and sanitize Firestore payloads to prevent non-serializable properties or circular structures from causing hangs
+const validateAndSanitizeFirestorePayload = (data: any, path = 'root'): any => {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  const type = typeof data;
+
+  if (type === 'string') {
+    // Check if it's a huge base64 data URL
+    if (data.startsWith('data:image/') || data.startsWith('data:application/')) {
+      throw new Error(`Validation Error at ${path}: String contains Base64 image data instead of a proper hosted URL.`);
+    }
+    // Limit string size to prevent denial of wallet/storage issues
+    if (data.length > 500000) {
+      throw new Error(`Validation Error at ${path}: String is too large (${data.length} characters). Limit is 500,000.`);
+    }
+    return data;
+  }
+
+  if (type === 'number' || type === 'boolean') {
+    return data;
+  }
+
+  // Check for common non-serializable browser objects
+  if (data instanceof File) {
+    throw new Error(`Validation Error at ${path}: Found native File object. Files must be uploaded to Cloudinary first.`);
+  }
+  if (data instanceof Blob) {
+    throw new Error(`Validation Error at ${path}: Found native Blob object. Blobs must be uploaded to Cloudinary first.`);
+  }
+  if (data instanceof Promise) {
+    throw new Error(`Validation Error at ${path}: Found Promise object. All async operations must be awaited.`);
+  }
+
+  if (Array.isArray(data)) {
+    console.log(`[VALIDATION] Checking array: ${path} (length: ${data.length})`);
+    return data.map((item, idx) => validateAndSanitizeFirestorePayload(item, `${path}[${idx}]`));
+  }
+
+  if (type === 'object') {
+    // Check if it's a plain object
+    const proto = Object.getPrototypeOf(data);
+    if (proto !== null && proto !== Object.prototype) {
+      console.warn(`[VALIDATION] Non-plain object encountered at ${path}:`, data.constructor?.name);
+      if (data.constructor?.name === 'Timestamp' || data.constructor?.name === 'FieldValueImpl' || data.constructor?.name === 'ServerTimestampTransform') {
+        return data; // Allow Firestore types
+      }
+      throw new Error(`Validation Error at ${path}: Found non-plain object (${data.constructor?.name}). Firestore payloads must be plain objects.`);
+    }
+
+    const sanitized: any = {};
+    for (const key of Object.keys(data)) {
+      sanitized[key] = validateAndSanitizeFirestorePayload(data[key], `${path}.${key}`);
+    }
+    return sanitized;
+  }
+
+  throw new Error(`Validation Error at ${path}: Unsupported data type "${type}".`);
+};
 
 // Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
 const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
@@ -317,6 +390,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Action status
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isTestingFirestore, setIsTestingFirestore] = useState(false);
+  const [firestoreTestResult, setFirestoreTestResult] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Gallery Image Upload State & Ref
@@ -326,6 +401,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Cascade Deletion Confirmation Modal State
   const [deletingElephantTarget, setDeletingElephantTarget] = useState<Elephant | null>(null);
   const [isDeletingCascade, setIsDeletingCascade] = useState(false);
+
+  // Rebuilt photo selections state for streamlined Cloudinary uploads
+  const [photoSelections, setPhotoSelections] = useState<AdminPhotoSelection[]>([]);
 
   const showToast = (msg: string) => {
     setStatusMessage(msg);
@@ -390,7 +468,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       physicalCharacteristics: '',
       description: '',
       peraheraParticipation: [],
-      photos: [PRESET_ELEPHANT_PHOTOS[0]],
+      photos: [],
       sources: [{ title: 'Department of Wildlife Conservation / Temple Registry', url: '', publisher: 'Official Custodians', verifiedDate: '2024' }],
       verified: true,
       status: 'living',
@@ -400,6 +478,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
     setOtherNamesText('');
     setPeraheraText('');
+    setPhotoSelections([]);
     setAdminTab('editor');
   };
 
@@ -421,7 +500,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       physicalCharacteristics: elephant.physicalCharacteristics || '',
       description: elephant.description || '',
       peraheraParticipation: elephant.peraheraParticipation || [],
-      photos: elephant.photos && elephant.photos.length > 0 ? elephant.photos : [PRESET_ELEPHANT_PHOTOS[0]],
+      photos: elephant.photos || [],
       sources: elephant.sources && elephant.sources.length > 0 ? elephant.sources : [{ title: '', url: '', publisher: '', verifiedDate: '' }],
       verified: elephant.verified ?? true,
       status: elephant.status || 'living',
@@ -431,19 +510,141 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
     setOtherNamesText((elephant.otherNames || []).join(', '));
     setPeraheraText((elephant.peraheraParticipation || []).join(', '));
+    
+    // Load existing photos into local management array
+    if (elephant.photos && elephant.photos.length > 0) {
+      const loaded: AdminPhotoSelection[] = elephant.photos.map((pUrl, idx) => {
+        const match = elephant.cloudinaryPhotos?.find((cp) => cp.url === pUrl);
+        return {
+          id: `existing_${idx}_${Date.now()}`,
+          file: null,
+          url: pUrl,
+          publicId: match?.publicId || '',
+          status: 'success',
+        };
+      });
+      setPhotoSelections(loaded);
+    } else {
+      setPhotoSelections([]);
+    }
+    
     setAdminTab('editor');
   };
 
-  // Save Elephant
+  // Save Elephant with rebuilt-from-scratch concurrent Cloudinary uploader & transactional security
   const handleSubmitElephant = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[1] Save started');
+
     if (!formData.name.trim()) {
       alert('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
       return;
     }
 
+    if (photoSelections.length === 0) {
+      alert('කරුණාකර අවම වශයෙන් එක් ඡායාරූපයක්වත් තෝරන්න. (Please select at least one photo.)');
+      return;
+    }
+
+    console.log('[2] Form validation completed');
+
     try {
       setIsSaving(true);
+      
+      // 1. Process local/pending files to Cloudinary in parallel!
+      console.log('[3] Starting concurrent Cloudinary upload for pending photos...');
+      
+      const config = await getCloudinaryConfig();
+      const cloudName = config.cloudName || 'iffzqdhi';
+      const uploadPreset = config.uploadPreset || 'alimedia_uploads';
+
+      const uploadPromises = photoSelections.map(async (photo, idx) => {
+        // Skip already-successful uploads
+        if (photo.status === 'success') {
+          return photo;
+        }
+
+        if (!photo.file) {
+          // Fallback if URL exists but status wasn't success
+          return {
+            ...photo,
+            status: 'success' as const
+          };
+        }
+
+        // Update status to compressing
+        setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing' as const } : p));
+        
+        try {
+          // Compress client-side
+          const compressedDataUrl = await compressImageFile(photo.file, 1600, 1600, 0.85);
+          
+          // Update status to uploading
+          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' as const } : p));
+
+          // Post to Cloudinary
+          const fd = new FormData();
+          fd.append('file', compressedDataUrl);
+          fd.append('upload_preset', uploadPreset);
+          fd.append('folder', 'alimedia_uploads');
+
+          const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+          const response = await fetch(url, {
+            method: 'POST',
+            body: fd,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Cloudinary responded with ${response.status}: ${errorText}`);
+          }
+
+          const result = await response.json();
+          if (!result.secure_url) {
+            throw new Error('Cloudinary response did not contain secure_url');
+          }
+
+          const updatedPhoto: AdminPhotoSelection = {
+            ...photo,
+            url: result.secure_url,
+            publicId: result.public_id || '',
+            status: 'success' as const,
+            error: undefined
+          };
+
+          // Update local photo state
+          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? updatedPhoto : p));
+          return updatedPhoto;
+        } catch (err: any) {
+          console.error(`Failed uploading photo #${idx + 1}:`, err);
+          const failedPhoto: AdminPhotoSelection = {
+            ...photo,
+            status: 'failed' as const,
+            error: err.message || 'Upload failed'
+          };
+          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? failedPhoto : p));
+          throw err;
+        }
+      });
+
+      // Execute all uploads in parallel
+      const results = await Promise.all(uploadPromises);
+
+      // Verify that all uploads actually succeeded
+      const failedCount = results.filter(r => r.status !== 'success').length;
+      if (failedCount > 0) {
+        throw new Error('සමහර ඡායාරූප upload කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න හෝ අසාර්ථක ඡායාරූප ඉවත් කරන්න.');
+      }
+
+      console.log('[4] Cloudinary uploads completed successfully!');
+
+      // Collect URLs and public_ids
+      const finalPhotosArray = results.map(r => r.url);
+      const finalCloudinaryPhotosArray = results.map(r => ({
+        url: r.url,
+        publicId: r.publicId
+      }));
+
       const parsedOtherNames = otherNamesText
         .split(',')
         .map((s) => s.trim())
@@ -454,48 +655,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         .map((s) => s.trim())
         .filter(Boolean);
 
-      // --- CLOUDINARY UPLOAD FLOW FOR UNSAVED/BASE64 PHOTOS ---
-      const uploadedPhotos: string[] = [];
-      for (const photo of formData.photos) {
-        if (!photo || photo.trim().length === 0) continue;
-        
-        if (photo.startsWith('data:image/') || photo.startsWith('blob:')) {
-          // It's a local base64/blob image, we MUST upload it to Cloudinary now!
-          try {
-            const uploadedUrl = await uploadImageToCloudinary(photo);
-            if (!uploadedUrl || uploadedUrl.startsWith('data:image/')) {
-              throw new Error('Cloudinary returned an invalid URL or fell back to base64.');
-            }
-            uploadedPhotos.push(uploadedUrl);
-          } catch (cloudinaryErr: any) {
-            console.error('Failed to upload image during elephant save:', cloudinaryErr);
-            throw new Error(`Cloudinary upload failed: ${cloudinaryErr.message || cloudinaryErr}`);
-          }
-        } else {
-          // It's already a hosted URL (e.g. res.cloudinary.com or unsplash or external)
-          uploadedPhotos.push(photo);
-        }
-      }
-
-      const cleanedPhotos = uploadedPhotos.filter((p) => p && p.trim().length > 0);
-      if (cleanedPhotos.length === 0) {
-        cleanedPhotos.push(PRESET_ELEPHANT_PHOTOS[0]);
-      }
-
       const cleanedSources = formData.sources.filter((s) => s.title && s.title.trim().length > 0);
 
+      // Build safe and fully backwards-compatible payload
       const payload: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'> = {
         ...formData,
         otherNames: parsedOtherNames,
         peraheraParticipation: parsedPeraheras,
-        photos: cleanedPhotos,
+        photos: finalPhotosArray,
+        cloudinaryPhotos: finalCloudinaryPhotosArray,
         sources: cleanedSources.length > 0 ? cleanedSources : [{ title: 'Official Custodians Documentation', publisher: 'Verified Registry', verifiedDate: '2024' }],
       };
 
-      await onSaveElephant(payload, editingId || undefined);
+      console.log('[TRACE] Checking authentication state before write...');
+      console.log('[TRACE] Firebase current authenticated UID:', auth.currentUser?.uid || 'no-auth-user');
+
+      // Check document size and details as per Step 6
+      const sizeEstimationBytes = JSON.stringify(payload).length;
+      console.log('[TRACE] Serialized Payload Size Estimation:', sizeEstimationBytes, 'bytes');
+
+      // Strict serialization validation as per Step 7
+      const sanitizedPayload = validateAndSanitizeFirestorePayload(payload, 'elephant_data_form');
+      console.log('[TRACE] Sanitization & Validation check completed successfully. Payload is fully serializable.');
+
+      // We call onSaveElephant to save the record in Firestore
+      await onSaveElephant(sanitizedPayload, editingId || undefined);
+      
       showToast(editingId ? 'පැතිකඩ සාර්ථකව යාවත්කාලීන විය!' : 'නව අලි පැතිකඩ සාර්ථකව ලියාපදිංචි කෙරිණි!');
       setAdminTab('elephants');
     } catch (err: any) {
+      console.error('Error saving elephant profile:', err);
       alert(`Error saving elephant: ${err.message || err}`);
     } finally {
       setIsSaving(false);
@@ -2173,101 +2362,226 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Section 4: Photo Gallery & Mobile Compressed Uploader */}
+            {/* Section 4: Rebuilt Photo Gallery & Streamlined Concurrent Uploader */}
             <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                     <ImageIcon className="w-4 h-4 text-emerald-700" />
-                    <span>4. ඡායාරූප ගැලරිය (Photo Gallery & Mobile Upload)</span>
+                    <span>4. ඡායාරූප ගැලරිය (Photo Gallery & Parallel Uploads)*</span>
                   </h4>
-                  <p className="text-[11px] text-zinc-500">
-                    උපාංගයේ ඇති ඕනෑම ඡායාරූපයක් හෝ Image URLs එක් කරන්න.
+                  <p className="text-[11px] text-zinc-500 font-medium">
+                    ඡායාරූප තෝරන්න. ඒවා ස්වයංක්‍රීයව compressed වී, Save ක්ලික් කළ විට parallel ලෙස Cloudinary වෙත ආරක්ෂිතව upload වේ.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <input
-                    ref={galleryInputRef}
                     type="file"
                     multiple
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => e.target.files && handleGalleryFiles(e.target.files)}
+                    id="admin-photo-picker"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const newFiles = Array.from(e.target.files) as File[];
+                        const additions: AdminPhotoSelection[] = newFiles.map(file => ({
+                          id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                          file,
+                          url: URL.createObjectURL(file),
+                          publicId: '',
+                          status: 'pending'
+                        }));
+                        setPhotoSelections(prev => [...prev, ...additions]);
+                        e.target.value = ''; // Reset input so same file can be re-selected
+                      }
+                    }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => galleryInputRef.current?.click()}
-                    disabled={isUploadingGallery}
+                  <label
+                    htmlFor="admin-photo-picker"
                     className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    {isUploadingGallery ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Camera className="w-3.5 h-3.5" />
-                    )}
-                    <span>Upload from Phone / PC</span>
-                  </button>
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Select Device Photos</span>
+                  </label>
                   <button
                     type="button"
-                    onClick={handleAddPhotoField}
+                    onClick={() => {
+                      const url = prompt('Enter image secure URL:');
+                      if (url && url.trim()) {
+                        const manualAddition: AdminPhotoSelection = {
+                          id: `manual_${Date.now()}`,
+                          file: null,
+                          url: url.trim(),
+                          publicId: '',
+                          status: 'success'
+                        };
+                        setPhotoSelections(prev => [...prev, manualAddition]);
+                      }
+                    }}
                     className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
-                    + Add URL
+                    + Add External URL
                   </button>
                 </div>
               </div>
 
               {/* Photo Thumbnails List */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
-                {formData.photos.map((photoUrl, idx) => (
-                  <div
-                    key={idx}
-                    className="relative group bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 aspect-square shadow-2xs"
-                  >
-                    {photoUrl ? (
-                      <img
-                        src={photoUrl}
-                        alt={`Elephant ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 p-2 text-center text-[10px]">
-                        <ImageIcon className="w-5 h-5 mb-1" />
-                        <span>No image</span>
+              {photoSelections.length === 0 ? (
+                <div className="border-2 border-dashed border-zinc-200 rounded-2xl p-8 text-center text-zinc-400 text-xs">
+                  <ImageIcon className="w-8 h-8 mx-auto mb-2 text-zinc-300 animate-pulse" />
+                  <span>ඡායාරූප කිසිවක් තෝරා නැත. (No photos selected yet.)</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
+                  {photoSelections.map((photo, idx) => (
+                    <div
+                      key={photo.id}
+                      className={`relative group rounded-2xl overflow-hidden border aspect-square shadow-2xs flex flex-col justify-between transition-all ${
+                        photo.status === 'failed'
+                          ? 'border-red-300 bg-red-50'
+                          : photo.status === 'success'
+                          ? 'border-zinc-200 bg-zinc-50'
+                          : 'border-amber-300 bg-amber-50 animate-pulse'
+                      }`}
+                    >
+                      {/* Image Preview */}
+                      <div className="relative flex-1 w-full h-full">
+                        <img
+                          src={photo.url}
+                          alt={`Elephant image preview ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+
+                        {/* Status Overlay Badge */}
+                        <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white p-1 text-[10px] text-center font-bold flex items-center justify-center gap-1">
+                          {photo.status === 'pending' && (
+                            <span className="text-zinc-300">Pending Upload</span>
+                          )}
+                          {photo.status === 'compressing' && (
+                            <span className="text-amber-300 flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Compressing...
+                            </span>
+                          )}
+                          {photo.status === 'uploading' && (
+                            <span className="text-emerald-300 flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Uploading...
+                            </span>
+                          )}
+                          {photo.status === 'success' && (
+                            <span className="text-emerald-400 flex items-center gap-1">
+                              ✓ Safe (Cloudinary)
+                            </span>
+                          )}
+                          {photo.status === 'failed' && (
+                            <span className="text-red-400 font-extrabold">Failed</span>
+                          )}
+                        </div>
                       </div>
-                    )}
 
-                    {/* Main Cover Badge */}
-                    {idx === 0 && (
-                      <span className="absolute top-2 left-2 bg-emerald-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
-                        COVER PHOTO
-                      </span>
-                    )}
+                      {/* Cover Photo Indicator */}
+                      {idx === 0 && (
+                        <span className="absolute top-2 left-2 bg-emerald-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
+                          COVER PHOTO
+                        </span>
+                      )}
 
-                    {/* Actions Overlay */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
-                      {idx !== 0 && (
+                      {/* Action buttons overlay */}
+                      <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+                        {idx !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPhotoSelections(prev => {
+                                const next = [...prev];
+                                const [target] = next.splice(idx, 1);
+                                return [target, ...next];
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-white text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-emerald-50 cursor-pointer"
+                          >
+                            Make Cover
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleSetMainPhoto(idx)}
-                          className="px-2 py-1 bg-white text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-emerald-50 cursor-pointer"
+                          onClick={() => {
+                            setPhotoSelections(prev => prev.filter(p => p.id !== photo.id));
+                          }}
+                          className="p-1.5 bg-red-600 text-white rounded-lg text-xs shadow-md hover:bg-red-700 cursor-pointer"
+                          title="Remove photo"
                         >
-                          Make Cover
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                      </div>
+
+                      {/* Detailed error indicator if failed */}
+                      {photo.status === 'failed' && photo.error && (
+                        <div className="absolute inset-0 bg-red-950/95 p-2 flex flex-col justify-between text-white text-[10px] text-left">
+                          <div className="overflow-y-auto max-h-16 font-medium text-red-200">
+                            Error: {photo.error}
+                          </div>
+                          <div className="flex gap-1.5 mt-1">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                // Trigger upload specifically for this failed photo
+                                if (!photo.file) return;
+                                setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing', error: undefined } : p));
+                                try {
+                                  const compressedDataUrl = await compressImageFile(photo.file, 1600, 1600, 0.85);
+                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' } : p));
+                                  
+                                  const config = await getCloudinaryConfig();
+                                  const cloudName = config.cloudName || 'iffzqdhi';
+                                  const uploadPreset = config.uploadPreset || 'alimedia_uploads';
+
+                                  const fd = new FormData();
+                                  fd.append('file', compressedDataUrl);
+                                  fd.append('upload_preset', uploadPreset);
+                                  fd.append('folder', 'alimedia_uploads');
+
+                                  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+                                    method: 'POST',
+                                    body: fd,
+                                  });
+
+                                  if (!response.ok) throw new Error('Cloudinary failed');
+                                  const res = await response.json();
+                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? {
+                                    ...p,
+                                    url: res.secure_url,
+                                    publicId: res.public_id || '',
+                                    status: 'success'
+                                  } : p));
+                                } catch (e: any) {
+                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? {
+                                    ...p,
+                                    status: 'failed',
+                                    error: e.message || 'Retry failed'
+                                  } : p));
+                                }
+                              }}
+                              className="flex-1 py-1 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black rounded-md text-center cursor-pointer"
+                            >
+                              Retry
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoSelections(prev => prev.filter(p => p.id !== photo.id));
+                              }}
+                              className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded-md font-bold cursor-pointer"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePhotoField(idx)}
-                        className="p-1.5 bg-red-600 text-white rounded-lg text-xs shadow-md hover:bg-red-700 cursor-pointer"
-                        title="Remove photo"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Section 5: Sources & Verified Documentation */}
@@ -2839,6 +3153,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="font-extrabold text-sm mt-2">Export JSON Backup</div>
                   <div className="text-[11px] text-amber-800">Raw JSON Structure Format</div>
                 </button>
+              </div>
+            </div>
+
+            {/* Firestore Connection & Write Diagnostic Card */}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-700" />
+                <span>Firestore Connection & Write Diagnostic Test</span>
+              </h3>
+              <p className="text-xs text-zinc-500 font-medium">
+                මෙමඟින් Cloudinary රහිතව කෙලින්ම Firestore Database එකට කුඩා පරීක්ෂණ දත්තයක් (Tiny test document) ලියා තහවුරු කරගත හැක (Test Firestore write connection directly without Cloudinary).
+              </p>
+
+              <div className="space-y-3 pt-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsTestingFirestore(true);
+                      setFirestoreTestResult(null);
+                      const res = await runFirestoreDiagnosticTest();
+                      setFirestoreTestResult(`SUCCESS: Firestore write completed successfully! Connection is fully healthy.`);
+                      showToast('Firestore test write completed successfully!');
+                    } catch (err: any) {
+                      setFirestoreTestResult(`ERROR: ${err.message || err}`);
+                    } finally {
+                      setIsTestingFirestore(false);
+                    }
+                  }}
+                  disabled={isTestingFirestore}
+                  className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
+                >
+                  {isTestingFirestore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4" />
+                  )}
+                  <span>{isTestingFirestore ? 'පරීක්ෂා කරමින් පවතී (Testing Connection)...' : 'Run Firestore Connection & Write Test'}</span>
+                </button>
+
+                {firestoreTestResult && (
+                  <div className={`p-4 rounded-2xl border text-xs leading-relaxed font-mono whitespace-pre-wrap ${
+                    firestoreTestResult.startsWith('SUCCESS') 
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                      : 'bg-red-50 border-red-200 text-red-900'
+                  }`}>
+                    <div className="font-bold mb-1">
+                      {firestoreTestResult.startsWith('SUCCESS') ? '✅ DIAGNOSTIC PASSED' : '❌ DIAGNOSTIC FAILED'}
+                    </div>
+                    {firestoreTestResult}
+                  </div>
+                )}
               </div>
             </div>
 

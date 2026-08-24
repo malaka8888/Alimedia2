@@ -25,6 +25,7 @@ export interface Elephant {
   description: string; // Comprehensive background, sacred perahera history, guardianship
   peraheraParticipation?: string[]; // Festivals (e.g., "Kandy Esala Perahera", "Kelaniya Duruthu Perahera")
   photos: string[]; // URLs of authentic photos
+  cloudinaryPhotos?: { url: string; publicId: string }[];
   coverPhotoIndex?: number;
   sources: ElephantSource[]; // Verified references and documentation
   verified: boolean; // Verification badge
