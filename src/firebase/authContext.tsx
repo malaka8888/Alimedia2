@@ -50,17 +50,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             photoURL: currentUser.photoURL,
           });
 
-          // Merge local follows with Firestore follows
-          const combinedFollows = Array.from(new Set([...userProf.followedElephants, ...localFollows]));
-          userProf.followedElephants = combinedFollows;
           setProfile(userProf);
-          setLocalFollows(combinedFollows);
-          localStorage.setItem('alimedia_followed_elephants', JSON.stringify(combinedFollows));
+          setLocalFollows(userProf.followedElephants || []);
+          localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
         } catch (e) {
           console.error('Error fetching user profile:', e);
         }
       } else {
-        setProfile(null);
+        // Fallback check for mock Google Sign-In profile in localStorage
+        const savedMock = localStorage.getItem('alimedia_user_mock');
+        if (savedMock) {
+          try {
+            const parsed = JSON.parse(savedMock);
+            const userProf = await syncUserProfile({
+              uid: parsed.uid,
+              email: parsed.email,
+              displayName: parsed.displayName,
+              photoURL: parsed.photoURL,
+            });
+            setProfile(userProf);
+            setLocalFollows(userProf.followedElephants || []);
+            localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
+          } catch (e) {
+            console.error('Error parsing/syncing fallback mock profile:', e);
+            setProfile(null);
+          }
+        } else {
+          setProfile(null);
+        }
       }
       setLoading(false);
     });
@@ -80,9 +97,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: result.user.displayName,
           photoURL: result.user.photoURL,
         });
-        const combinedFollows = Array.from(new Set([...userProf.followedElephants, ...localFollows]));
-        userProf.followedElephants = combinedFollows;
         setProfile(userProf);
+        setLocalFollows(userProf.followedElephants || []);
+        localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
       }
     } catch (err: any) {
       console.warn('Google sign-in error or cancelled:', err);
@@ -104,17 +121,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (emailPrompt) {
           const namePrompt = prompt('Enter your Display Name:', 'Malaka Fernando') || 'Malaka Fernando';
           const mockUid = `google_${emailPrompt.replace(/[^a-zA-Z0-9]/g, '_')}`;
-          const mockProfile: UserProfile = {
-            uid: mockUid,
-            email: emailPrompt,
-            displayName: namePrompt,
-            username: `@${emailPrompt.split('@')[0]}`,
-            photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(namePrompt)}&backgroundColor=062E22,0B4A37`,
-            bio: 'Sri Lankan Domesticated Elephants & Tuskers Enthusiast 🐘',
-            followedElephants: localFollows,
-          };
-          setProfile(mockProfile);
-          localStorage.setItem('alimedia_user_mock', JSON.stringify(mockProfile));
+          
+          // Sync mock profile with Firestore to ensure database persistence!
+          try {
+            const mockProfile: UserProfile = {
+              uid: mockUid,
+              email: emailPrompt,
+              displayName: namePrompt,
+              username: `@${emailPrompt.split('@')[0]}`,
+              photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(namePrompt)}&backgroundColor=062E22,0B4A37`,
+              bio: 'Sri Lankan Domesticated Elephants & Tuskers Enthusiast 🐘',
+              followedElephants: [],
+            };
+            
+            const userProf = await syncUserProfile(mockProfile);
+            setProfile(userProf);
+            setLocalFollows(userProf.followedElephants || []);
+            localStorage.setItem('alimedia_user_mock', JSON.stringify(mockProfile));
+            localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
+          } catch (syncErr) {
+            console.error('Error syncing mock profile with Firestore:', syncErr);
+          }
         }
       } else {
         throw err;
@@ -131,6 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setProfile(null);
     localStorage.removeItem('alimedia_user_mock');
+    localStorage.removeItem('alimedia_followed_elephants');
+    setLocalFollows([]);
   };
 
   const isFollowing = (elephantId: string): boolean => {
@@ -168,9 +197,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       followedElephants: updatedList,
     });
 
-    // Update in Firestore
-    if (user?.uid) {
-      await toggleFollowElephantInDb(user.uid, elephantId, currently);
+    // Update in Firestore (supports both real and synced mock fallback accounts)
+    const activeUid = user?.uid || profile?.uid;
+    if (activeUid) {
+      await toggleFollowElephantInDb(activeUid, elephantId, currently);
     }
 
     return newStatus;

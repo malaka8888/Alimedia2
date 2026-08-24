@@ -64,6 +64,12 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
     }
   });
 
+  // Keep local optimistic like overrides in sync with real-time server updates
+  React.useEffect(() => {
+    setLikes({});
+    setUserLiked({});
+  }, [posts]);
+
   const handleMarkStoryViewed = useCallback((elephantId: string) => {
     if (!elephantId) return;
     const now = Date.now();
@@ -87,6 +93,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
   const lastTapRef = useRef<{ [id: string]: number }>({});
 
   const getEffectiveUid = (): string => {
+    if (profile?.uid) return profile.uid;
     if (user?.uid) return user.uid;
     try {
       let saved = localStorage.getItem('alimedia_client_uid');

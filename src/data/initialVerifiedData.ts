@@ -47,7 +47,7 @@ export const INITIAL_VERIFIED_ELEPHANTS: Elephant[] = [
     ],
     "organization": "Pinnawala Elephant Orphanage (පින්නවල අලි අනාථාගාරය)",
     "gender": "female",
-    "followerCount": 1,
+    "followerCount": 0,
     "otherNames": [
       "Pinnawala Sama"
     ],
