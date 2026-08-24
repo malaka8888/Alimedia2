@@ -447,19 +447,46 @@ export default function App() {
       setElephants(fresh);
       return;
     }
+
     if (id) {
+      // Optimistic state update for edit
+      setElephants((prev) =>
+        prev.map((el) => (el.id === id ? { ...el, ...elephantData, updatedAt: new Date() } : el))
+      );
+      if (selectedElephant && selectedElephant.id === id) {
+        setSelectedElephant((prev) => (prev ? { ...prev, ...elephantData, updatedAt: new Date() } : null));
+      }
+
       await updateElephant(id, elephantData);
       if (!skipRefresh) {
         showNotification(`${elephantData.name} යාවත්කාලීන කෙරිණි!`);
       }
     } else {
-      await addElephant(elephantData);
+      // Optimistic state update for add
+      const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const newElephant: Elephant = {
+        ...elephantData,
+        id: tempId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      setElephants((prev) => [newElephant, ...prev]);
+
+      const realId = await addElephant(elephantData);
+      
+      // Swap tempId with the real ID
+      setElephants((prev) =>
+        prev.map((el) => (el.id === tempId ? { ...el, id: realId } : el))
+      );
+
       if (!skipRefresh) {
         showNotification(`${elephantData.name} ලියාපදිංචි කෙරිණි!`);
       }
     }
+
     if (!skipRefresh) {
-      // Fetch in the background; onSnapshot will also update the list automatically and instantly!
+      // Background cache sync
       getElephants().then((fresh) => {
         if (fresh && fresh.length > 0) {
           setElephants(fresh);

@@ -35,8 +35,13 @@ export async function getCloudinaryConfig(): Promise<CloudinaryConfig> {
 
   try {
     const docRef = doc(db, SETTINGS_COLLECTION, CLOUDINARY_DOC);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
+    // Wrap with short 1000ms timeout for ultra-fast fallback
+    const snap = await Promise.race([
+      getDoc(docRef),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+    ]);
+
+    if (snap && typeof snap.exists === 'function' && snap.exists()) {
       const data = snap.data() as Partial<CloudinaryConfig>;
       cachedConfig = {
         cloudName: data.cloudName || defaultConf.cloudName,
@@ -88,10 +93,18 @@ export async function uploadImageToCloudinary(imageSource: string | File): Promi
     formData.append('upload_preset', config.uploadPreset);
 
     const url = `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`;
+    
+    // Add 10-second timeout using AbortController to prevent infinite hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(url, {
       method: 'POST',
       body: formData,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errText = await response.text();
