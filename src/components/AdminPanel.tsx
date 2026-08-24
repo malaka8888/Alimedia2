@@ -61,6 +61,7 @@ import { BulkImportElephants } from './BulkImportElephants';
 import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
 import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
 import { resetAllCountsInFirestore } from '../firebase/migrationService';
+import { getCloudinaryConfig, saveCloudinaryConfig, uploadImageToCloudinary } from '../firebase/cloudinaryService';
 
 // Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
 const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
@@ -162,7 +163,8 @@ export type AdminCategoryTab =
   | 'posts'
   | 'events'
   | 'bulk_import'
-  | 'database';
+  | 'database'
+  | 'cloudinary';
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   elephants,
@@ -191,6 +193,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Visitors & Reset Metrics State
   const [visitors, setVisitors] = useState<VisitorInfo[]>([]);
   const [isResettingMetrics, setIsResettingMetrics] = useState(false);
+
+  // Cloudinary configuration states
+  const [cloudinaryCloudName, setCloudinaryCloudName] = useState('');
+  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState('');
+  const [cloudinaryEnabled, setCloudinaryEnabled] = useState(false);
+  const [isSavingCloudinary, setIsSavingCloudinary] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      getCloudinaryConfig().then((config) => {
+        setCloudinaryCloudName(config.cloudName || '');
+        setCloudinaryUploadPreset(config.uploadPreset || '');
+        setCloudinaryEnabled(config.enabled || false);
+      }).catch((err) => {
+        console.error('Failed to fetch Cloudinary configuration on auth:', err);
+      });
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -544,15 +564,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     try {
       setIsUploadingGallery(true);
-      const compressedUrls = await Promise.all(
+      const compressedB64s = await Promise.all(
         fileArray.map((file) => compressImageFile(file, 1280, 1280, 0.85))
+      );
+
+      const cloudinaryUrls = await Promise.all(
+        compressedB64s.map((b64) => uploadImageToCloudinary(b64))
       );
 
       setFormData((prev) => {
         const currentPhotos = prev.photos.filter(Boolean);
         return {
           ...prev,
-          photos: [...compressedUrls, ...currentPhotos],
+          photos: [...cloudinaryUrls, ...currentPhotos],
         };
       });
 
@@ -662,10 +686,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       setIsCompressingEventCover(true);
       // Highly compress notification/event image to maximum 800 width/height and 0.65 quality to be super light-weight
-      const compressedUrl = await compressImageFile(file, 800, 800, 0.65);
+      const compressedB64 = await compressImageFile(file, 800, 800, 0.65);
+      const cloudinaryUrl = await uploadImageToCloudinary(compressedB64);
       setEventFormData((prev) => ({
         ...prev,
-        coverImage: compressedUrl,
+        coverImage: cloudinaryUrl,
       }));
       showToast('කවරයේ පින්තූරය සාර්ථකව සම්පීඩනය කර (Compressed) සම්බන්ධ කරන ලදී!');
     } catch (err: any) {
@@ -1150,6 +1175,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <Database className="w-3.5 h-3.5" />
             <span>පද්ධති උපස්ථ (Backup & DB)</span>
+          </button>
+
+          {/* Cloudinary Settings */}
+          <button
+            onClick={() => setAdminTab('cloudinary')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'cloudinary'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            <span>Cloudinary සැකසුම්</span>
           </button>
         </div>
       </div>
@@ -2806,6 +2844,134 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
                 <span>{isSeeding ? 'දත්ත Seed වෙමින් පවතී...' : 'Seed Verified Elephant Registry'}</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================= */}
+        {/* CATEGORY 8: CLOUDINARY MEDIA SETTINGS                          */}
+        {/* ============================================================= */}
+        {adminTab === 'cloudinary' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#062E22] flex items-center justify-center flex-shrink-0 border border-emerald-150">
+                  <UploadCloud className="w-6 h-6 text-emerald-750" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-[#062E22]">
+                    Cloudinary මාධ්‍ය ගබඩාව (Media Storage Settings)
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    වෙබ් අඩවියට එකතු කරන සියලුම පින්තූර සුරක්ෂිතව Cloudinary cloud එකේ ගබඩා කරගන්න (Store all images in Cloudinary).
+                  </p>
+                </div>
+              </div>
+
+              {/* Guide card */}
+              <div className="bg-[#FAF9F5] border border-emerald-100 rounded-2xl p-4 text-xs text-[#062E22] space-y-2 leading-relaxed">
+                <h4 className="font-bold flex items-center gap-1 text-emerald-950">
+                  <Sparkles className="w-4 h-4 text-emerald-700" />
+                  <span>Cloudinary ගිණුම සම්බන්ධ කරගන්නා ආකාරය (Setup Guide):</span>
+                </h4>
+                <ol className="list-decimal pl-5 space-y-1.5 text-zinc-600 font-medium text-[11px]">
+                  <li>
+                    <a href="https://cloudinary.com/" target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline font-bold">Cloudinary.com</a> වෙත ගොස් නොමිලේ ගිණුමක් (Free Account) සාදා ගන්න.
+                  </li>
+                  <li>
+                    Dashboard එකෙහි ඇති ඔබගේ <b>Cloud Name</b> එක මෙහි ඇතුළත් කරන්න.
+                  </li>
+                  <li>
+                    Cloudinary Settings (gear icon) -{'>'} <b>Upload</b> වෙත ගොස්, <b>Upload Presets</b> යටතේ <b>"Add upload preset"</b> ක්ලික් කරන්න.
+                  </li>
+                  <li>
+                    Preset එකෙහි <b>Signing Mode</b> එක <b>"Unsigned"</b> ලෙස සකසා එය Save කර, ලැබෙන Preset Name එක මෙහි ඇතුළත් කරන්න.
+                  </li>
+                </ol>
+              </div>
+
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-2xl">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-800">Cloudinary සේවාව සක්‍රීය කරන්න (Enable Cloudinary)</div>
+                    <div className="text-[10px] text-zinc-500 font-medium">සක්‍රීය කලහොත් සියලුම පින්තූර Cloudinary වෙත upload වේ.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCloudinaryEnabled(!cloudinaryEnabled)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      cloudinaryEnabled ? 'bg-emerald-700' : 'bg-zinc-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        cloudinaryEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Cloud Name*</label>
+                    <input
+                      type="text"
+                      value={cloudinaryCloudName}
+                      onChange={(e) => setCloudinaryCloudName(e.target.value.trim())}
+                      placeholder="e.g. dxyz12345"
+                      className="w-full px-4 py-3 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Unsigned Upload Preset*</label>
+                    <input
+                      type="text"
+                      value={cloudinaryUploadPreset}
+                      onChange={(e) => setCloudinaryUploadPreset(e.target.value.trim())}
+                      placeholder="e.g. ml_default_preset"
+                      className="w-full px-4 py-3 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSavingCloudinary}
+                  onClick={async () => {
+                    if (cloudinaryEnabled && (!cloudinaryCloudName || !cloudinaryUploadPreset)) {
+                      alert('Cloud Name සහ Upload Preset ඇතුළත් කිරීම අනිවාර්ය වේ.');
+                      return;
+                    }
+                    try {
+                      setIsSavingCloudinary(true);
+                      await saveCloudinaryConfig({
+                        cloudName: cloudinaryCloudName,
+                        uploadPreset: cloudinaryUploadPreset,
+                        enabled: cloudinaryEnabled,
+                      });
+                      showToast('Cloudinary සැකසුම් සාර්ථකව සුරකින ලදී!');
+                    } catch (err: any) {
+                      alert(`Error saving Cloudinary config: ${err.message || err}`);
+                    } finally {
+                      setIsSavingCloudinary(false);
+                    }
+                  }}
+                  className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isSavingCloudinary ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>සුරකිමින් පවතී...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>සැකසුම් සුරකින්න (Save Settings)</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

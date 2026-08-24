@@ -20,6 +20,7 @@ import { Language, translations, formatBilingualElephantName } from '../utils/tr
 import { useAuth } from '../firebase/authContext';
 import { addElephantPost } from '../firebase/postService';
 import { compressImageFile } from '../utils/imageCompressor';
+import { uploadImageToCloudinary } from '../firebase/cloudinaryService';
 
 interface CreatePostModalProps {
   elephants: Elephant[];
@@ -142,14 +143,24 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const finalAuthorUsername = profile?.username || (guestHandle.trim() ? (guestHandle.startsWith('@') ? guestHandle.trim() : `@${guestHandle.trim()}`) : '@fan');
     const finalAuthorPhoto = profile?.photoURL || user?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80';
 
+    let finalPhotoUrl = imageToUse;
+
     try {
       setIsSubmitting(true);
+
+      if (imageToUse && imageToUse.startsWith('data:image/')) {
+        try {
+          finalPhotoUrl = await uploadImageToCloudinary(imageToUse);
+        } catch (cloudinaryErr) {
+          console.error('Failed to upload to Cloudinary, falling back to base64:', cloudinaryErr);
+        }
+      }
 
       const postPayload: Omit<ElephantPost, 'id' | 'createdAt' | 'updatedAt'> = {
         elephantId: selectedElephantId,
         elephantName: selectedElephantObj.name,
         elephantSinhalaName: selectedElephantObj.sinhalaName || '',
-        photoUrl: imageToUse,
+        photoUrl: finalPhotoUrl,
         caption: caption.trim() || `${selectedElephantObj.name} (${selectedElephantObj.sinhalaName || ''})`,
         authorUid: user?.uid || '',
         authorName: finalAuthorName,
@@ -201,7 +212,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         elephantId: selectedElephantId,
         elephantName: selectedElephantObj.name,
         elephantSinhalaName: selectedElephantObj.sinhalaName || '',
-        photoUrl: imageToUse,
+        photoUrl: finalPhotoUrl,
         caption: caption.trim() || `${selectedElephantObj.name}`,
         authorUid: user?.uid || '',
         authorName: finalAuthorName,
