@@ -24,11 +24,27 @@ const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatab
 // Wrap in try-catch with getFirestore fallback to guarantee it is initialized exactly once even during reload/evaluation.
 let dbInstance;
 try {
-  dbInstance = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-  }, dbId);
+  if (dbId) {
+    dbInstance = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, dbId);
+  } else {
+    dbInstance = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+  }
 } catch (e) {
-  dbInstance = getFirestore(app, dbId);
+  try {
+    if (dbId) {
+      dbInstance = getFirestore(app, dbId);
+    } else {
+      dbInstance = getFirestore(app);
+    }
+  } catch (innerErr) {
+    console.error('Fatal Firestore initialization error:', innerErr);
+    // Ultimate fallback to getFirestore
+    dbInstance = getFirestore(app);
+  }
 }
 
 export const db = dbInstance;
