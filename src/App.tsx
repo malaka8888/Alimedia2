@@ -459,8 +459,12 @@ export default function App() {
       }
     }
     if (!skipRefresh) {
-      const fresh = await getElephants();
-      setElephants(fresh);
+      // Fetch in the background; onSnapshot will also update the list automatically and instantly!
+      getElephants().then((fresh) => {
+        if (fresh && fresh.length > 0) {
+          setElephants(fresh);
+        }
+      }).catch(() => {});
     }
   };
 
@@ -471,8 +475,11 @@ export default function App() {
     }[]
   ) => {
     await saveElephantsBatch(operations);
-    const fresh = await getElephants();
-    setElephants(fresh);
+    getElephants().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setElephants(fresh);
+      }
+    }).catch(() => {});
   };
 
   const handleDeleteElephant = async (id: string) => {

@@ -22,15 +22,15 @@ export async function getCloudinaryConfig(): Promise<CloudinaryConfig> {
     return cachedConfig;
   }
 
-  // Fallback to environment variables
-  const envCloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || '';
-  const envUploadPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || '';
-  const envEnabled = (import.meta as any).env?.VITE_CLOUDINARY_ENABLED === 'true';
+  // Fallback to environment variables or user-provided defaults
+  const envCloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'iffzqdhi';
+  const envUploadPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || 'alimedia_uploads';
+  const envEnabled = (import.meta as any).env?.VITE_CLOUDINARY_ENABLED !== 'false';
 
   const defaultConf: CloudinaryConfig = {
     cloudName: envCloudName,
     uploadPreset: envUploadPreset,
-    enabled: envCloudName && envUploadPreset ? true : envEnabled,
+    enabled: true,
   };
 
   try {
