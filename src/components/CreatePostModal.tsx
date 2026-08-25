@@ -385,7 +385,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
                         <img
-                          src={el.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=200&q=80'}
+                          src={(el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=200&q=80'}
                           alt={el.name}
                           className="w-full h-full object-cover"
                         />

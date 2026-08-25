@@ -7,6 +7,9 @@ interface PhotoLightboxProps {
 }
 
 export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({ photoUrl, onClose }) => {
+  if (!photoUrl || typeof photoUrl !== 'string' || photoUrl.trim().length === 0) {
+    return null;
+  }
   return (
     <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 animate-fadeIn">
       {/* Top action bar */}

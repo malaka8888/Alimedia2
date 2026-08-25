@@ -114,7 +114,8 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
           {topFollowedElephants.map((item, index) => {
             const el = item.elephant;
             const rank = index + 1;
-            const photo = el.photos?.[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
+            const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) ||
+              'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
             const formattedFollowers = item.followers >= 1000 ? `${(item.followers / 1000).toFixed(1)}K` : `${item.followers}`;
             const bilingualName = formatBilingualElephantName(el, language);
 
@@ -251,9 +252,8 @@ export const ElephantDirectory: React.FC<ElephantDirectoryProps> = ({
         ) : (
           filteredElephants.map((elephant) => {
             const isTusker = elephant.type === 'tusker';
-            const photo = elephant.photos && elephant.photos.length > 0
-              ? elephant.photos[0]
-              : 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=600&q=80';
+            const photo = (elephant.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) ||
+              'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=600&q=80';
             const bilingualName = formatBilingualElephantName(elephant, language);
 
             return (

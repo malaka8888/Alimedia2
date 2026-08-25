@@ -17,7 +17,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   hasNewNotifications = false,
 }) => {
   const { user, profile } = useAuth();
-  const userPhoto = profile?.photoURL || user?.photoURL;
+  const rawPhoto = profile?.photoURL || user?.photoURL;
+  const userPhoto = rawPhoto && typeof rawPhoto === 'string' && rawPhoto.trim().length > 0 ? rawPhoto : null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center pb-3 pt-1 px-4 pointer-events-none">

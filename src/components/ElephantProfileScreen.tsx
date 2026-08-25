@@ -57,9 +57,10 @@ export const ElephantProfileScreen: React.FC<ElephantProfileScreenProps> = ({
   }, [communityPosts, elephant]);
 
   const allPhotos = useMemo(() => {
-    const registryPhotos = elephant.photos || [];
-    const communityPhotos = elephantCommunityPosts.map((p) => p.photoUrl);
-    return Array.from(new Set([...registryPhotos, ...communityPhotos]));
+    const registryPhotos = (elephant.photos || []).filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+    const communityPhotos = elephantCommunityPosts.map((p) => p.photoUrl).filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+    const combined = Array.from(new Set([...registryPhotos, ...communityPhotos]));
+    return combined.length > 0 ? combined : ['https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80'];
   }, [elephant, elephantCommunityPosts]);
 
   const heroPhoto = allPhotos[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';

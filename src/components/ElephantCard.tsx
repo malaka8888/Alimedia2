@@ -16,9 +16,8 @@ export const ElephantCard: React.FC<ElephantCardProps> = ({
 }) => {
   const t = translations[language];
   const isTusker = elephant.type === 'tusker';
-  const coverPhoto = elephant.photos && elephant.photos.length > 0
-    ? elephant.photos[0]
-    : 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=800&q=80';
+  const coverPhoto = (elephant.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) ||
+    'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=800&q=80';
 
   return (
     <div

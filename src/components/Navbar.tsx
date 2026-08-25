@@ -29,7 +29,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const t = translations[language];
   const { user, profile } = useAuth();
-  const userPhoto = profile?.photoURL || user?.photoURL;
+  const rawPhoto = profile?.photoURL || user?.photoURL;
+  const userPhoto = rawPhoto && typeof rawPhoto === 'string' && rawPhoto.trim().length > 0 ? rawPhoto : null;
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-white/10 transition-colors">

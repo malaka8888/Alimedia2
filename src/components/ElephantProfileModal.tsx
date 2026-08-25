@@ -44,7 +44,7 @@ export const ElephantProfileModal: React.FC<ElephantProfileModalProps> = ({
 
   const t = translations[language];
   const isTusker = elephant.type === 'tusker';
-  const photos = elephant.photos && elephant.photos.length > 0 ? elephant.photos : [];
+  const photos = (elephant.photos || []).filter((p) => typeof p === 'string' && p.trim().length > 0);
   const currentPhoto = photos[selectedPhotoIndex] || photos[0] || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';
 
   const handleShare = () => {

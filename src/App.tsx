@@ -761,7 +761,7 @@ export default function App() {
                     className="bg-white dark:bg-[#121F1B] rounded-3xl border border-zinc-200 dark:border-emerald-950/70 shadow-2xs hover:shadow-sm transition-all overflow-hidden flex flex-col"
                   >
                     {/* Cover image with zoom effect */}
-                    {ev.coverImage && (
+                    {ev.coverImage && typeof ev.coverImage === 'string' && ev.coverImage.trim().length > 0 && (
                       <div className="w-full h-48 sm:h-56 bg-zinc-100 dark:bg-zinc-950 overflow-hidden relative border-b border-zinc-150 dark:border-zinc-800">
                         <img
                           src={ev.coverImage}

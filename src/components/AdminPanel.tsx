@@ -1858,7 +1858,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
-                        src={el.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0]}
+                        src={(el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0]}
                         alt={el.name}
                         className="w-11 h-11 rounded-xl object-cover border border-zinc-200 flex-shrink-0"
                       />
@@ -1949,7 +1949,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               ) : (
                 filteredElephants.map((el) => {
                   const isTusker = el.type === 'tusker';
-                  const photo = el.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0];
+                  const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0];
 
                   return (
                     <div
@@ -2089,7 +2089,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     ) : (
                       filteredElephants.map((elephant) => {
                         const isTusker = elephant.type === 'tusker';
-                        const photo = elephant.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0];
+                        const photo = (elephant.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0];
 
                         return (
                           <tr key={elephant.id} className="hover:bg-zinc-50/80 transition-colors">
@@ -2619,7 +2619,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {/* Image Preview */}
                       <div className="relative flex-1 w-full h-full">
                         <img
-                          src={photo.url}
+                          src={photo.url || PRESET_ELEPHANT_PHOTOS[0]}
                           alt={`Elephant image preview ${idx + 1}`}
                           className="w-full h-full object-cover"
                         />
@@ -2910,7 +2910,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {/* Photo Thumbnail */}
                       <div className="relative aspect-4/3 bg-zinc-100 overflow-hidden">
                         <img
-                          src={post.photoUrl}
+                          src={post.photoUrl || PRESET_ELEPHANT_PHOTOS[0]}
                           alt={post.elephantName}
                           className="w-full h-full object-cover"
                         />
@@ -2953,7 +2953,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {/* Author Info */}
                         <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
                           <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden">
-                            {post.authorPhotoURL ? (
+                            {post.authorPhotoURL && post.authorPhotoURL.trim().length > 0 ? (
                               <img
                                 src={post.authorPhotoURL}
                                 alt={post.authorName}
@@ -3294,7 +3294,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 border border-zinc-200 flex-shrink-0">
-                          {u.photoURL ? (
+                          {u.photoURL && u.photoURL.trim().length > 0 ? (
                             <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
                           ) : (
                             <User className="w-full h-full p-2 text-zinc-400" />
@@ -3345,7 +3345,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 border-2 border-zinc-200 flex-shrink-0">
-                                    {u.photoURL ? (
+                                    {u.photoURL && u.photoURL.trim().length > 0 ? (
                                       <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
                                     ) : (
                                       <User className="w-full h-full p-2 text-zinc-400" />

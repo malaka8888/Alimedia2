@@ -462,7 +462,8 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                 language
               );
               const segmentCount = group.stories.length;
-              const coverImg = group.coverPhoto || group.avatarPhoto;
+              const coverImg = group.coverPhoto || group.avatarPhoto || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=600&q=80';
+              const avatarImg = group.avatarPhoto || coverImg;
 
               return (
                 <div
@@ -519,7 +520,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                         isViewed ? 'border-white/30' : 'border-emerald-400'
                       }`}>
                         <img
-                          src={group.avatarPhoto || coverImg}
+                          src={avatarImg}
                           alt=""
                           className="w-full h-full object-cover"
                         />
@@ -563,6 +564,13 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
               language
             );
 
+            const postPhoto = (post.photoUrl && post.photoUrl.trim().length > 0)
+              ? post.photoUrl
+              : 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';
+            const authorPhoto = (post.authorPhotoURL && post.authorPhotoURL.trim().length > 0)
+              ? post.authorPhotoURL
+              : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80';
+
             return (
               <div
                 key={postId}
@@ -578,7 +586,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                     <div className="w-10 h-10 rounded-full p-0.5 bg-[#062E22] ring-2 ring-emerald-600/70 shrink-0 group-hover:scale-105 transition-transform">
                       <div className="w-full h-full rounded-full overflow-hidden bg-black">
                         <img
-                          src={post.photoUrl}
+                          src={postPhoto}
                           alt={post.elephantName}
                           className="w-full h-full object-cover"
                         />
@@ -643,7 +651,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-black cursor-pointer shadow-inner group select-none"
                 >
                   <img
-                    src={post.photoUrl}
+                    src={postPhoto}
                     alt={post.caption || post.elephantName}
                     className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300 pointer-events-none"
                   />
@@ -749,7 +757,7 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div className="w-4 h-4 rounded-full overflow-hidden bg-black border border-zinc-300 dark:border-white/20 shrink-0">
                       <img
-                        src={post.authorPhotoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                        src={authorPhoto}
                         alt=""
                         className="w-full h-full object-cover"
                       />
@@ -784,9 +792,8 @@ export const DiscoverFeed: React.FC<DiscoverFeedProps> = ({
           const isLongDescription = descriptionText.length > 120;
           const bilingualName = formatBilingualElephantName(elephant, language);
 
-          const postImage = elephant.photos && elephant.photos.length > 0
-            ? elephant.photos[0]
-            : 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';
+          const postImage = (elephant.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) ||
+            'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80';
 
           return (
             <div

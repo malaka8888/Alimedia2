@@ -201,7 +201,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {elephants.slice(0, 3).map((el) => {
-              const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
+              const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
               const bilingualName = formatBilingualElephantName(el, language);
               return (
                 <div
@@ -448,7 +448,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {followedElephantsList.map((el) => {
-                const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
+                const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
                 const isTusker = el.type === 'tusker';
                 const bilingualName = formatBilingualElephantName(el, language);
 
@@ -504,7 +504,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {suggestedElephants.map((el) => {
-              const photo = el.photos && el.photos.length > 0 ? el.photos[0] : '';
+              const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=400&q=80';
               const isTusker = el.type === 'tusker';
               const followingThis = el.id ? isFollowing(el.id) : false;
               const bilingualName = formatBilingualElephantName(el, language);

@@ -1232,7 +1232,7 @@ export function BulkImportElephants({
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <img
-                            src={row.photos[0]}
+                            src={(row.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || 'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=100&q=80'}
                             alt=""
                             className="w-9 h-9 rounded-full object-cover border border-zinc-200 flex-shrink-0"
                           />
