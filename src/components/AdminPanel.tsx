@@ -63,8 +63,8 @@ import { BulkImportElephants } from './BulkImportElephants';
 import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
 import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
 import { resetAllCountsInFirestore } from '../firebase/migrationService';
-import { getCloudinaryConfig, saveCloudinaryConfig, uploadImageToCloudinary } from '../firebase/cloudinaryService';
-import { runFirestoreDiagnosticTest } from '../firebase/elephantService';
+import { getCloudinaryConfig, saveCloudinaryConfig, uploadPhotoToCloudinary, uploadImageToCloudinary } from '../firebase/cloudinaryService';
+import { runFirestoreDiagnosticTest, runCompleteSystemDiagnostics } from '../firebase/elephantService';
 import { getAllUsers, deleteUserAccount } from '../firebase/userService';
 import { UserProfile } from '../types/user';
 import { auth } from '../firebase/config';
@@ -83,7 +83,7 @@ export interface AdminPhotoSelection {
 // Helper to validate and sanitize Firestore payloads to prevent non-serializable properties or circular structures from causing hangs
 const validateAndSanitizeFirestorePayload = (data: any, path = 'root'): any => {
   if (data === null || data === undefined) {
-    return data;
+    return null;
   }
 
   const type = typeof data;
@@ -116,15 +116,15 @@ const validateAndSanitizeFirestorePayload = (data: any, path = 'root'): any => {
   }
 
   if (Array.isArray(data)) {
-    console.log(`[VALIDATION] Checking array: ${path} (length: ${data.length})`);
-    return data.map((item, idx) => validateAndSanitizeFirestorePayload(item, `${path}[${idx}]`));
+    return data
+      .filter((item) => item !== undefined)
+      .map((item, idx) => validateAndSanitizeFirestorePayload(item, `${path}[${idx}]`));
   }
 
   if (type === 'object') {
     // Check if it's a plain object
     const proto = Object.getPrototypeOf(data);
     if (proto !== null && proto !== Object.prototype) {
-      console.warn(`[VALIDATION] Non-plain object encountered at ${path}:`, data.constructor?.name);
       if (data.constructor?.name === 'Timestamp' || data.constructor?.name === 'FieldValueImpl' || data.constructor?.name === 'ServerTimestampTransform') {
         return data; // Allow Firestore types
       }
@@ -133,7 +133,10 @@ const validateAndSanitizeFirestorePayload = (data: any, path = 'root'): any => {
 
     const sanitized: any = {};
     for (const key of Object.keys(data)) {
-      sanitized[key] = validateAndSanitizeFirestorePayload(data[key], `${path}.${key}`);
+      const val = data[key];
+      if (val !== undefined) {
+        sanitized[key] = validateAndSanitizeFirestorePayload(val, `${path}.${key}`);
+      }
     }
     return sanitized;
   }
@@ -601,7 +604,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Save Elephant with rebuilt-from-scratch concurrent Cloudinary uploader & transactional security
   const handleSubmitElephant = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('[1] Save started');
+    console.log('==============================================');
+    console.log('[1] Form submission started for Elephant registration');
+    console.log('[2] Current authenticated user UID:', auth.currentUser?.uid || 'no-auth-user');
+    console.log('[3] Current Admin role status:', isAuthenticated ? 'Admin Authenticated' : 'Guest/Public');
 
     if (!formData.name.trim()) {
       alert('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
@@ -613,13 +619,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
-    console.log('[2] Form validation completed');
+    console.log('[4] Validation passed successfully. Selected photos count:', photoSelections.length);
 
     try {
       setIsSaving(true);
       
-      // 1. Process local/pending files to Cloudinary in parallel!
-      console.log('[3] Starting concurrent Cloudinary upload for pending photos...');
+      // 1. Process local/pending files to Cloudinary in parallel
+      console.log('[5] Starting concurrent Cloudinary upload for photos...');
 
       const uploadPromises = photoSelections.map(async (photo, idx) => {
         // Skip already-successful uploads that have permanent URLs
@@ -647,17 +653,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           // Update status to uploading
           setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' as const } : p));
 
-          // Post to Cloudinary using standardized service
-          const secureUrl = await uploadImageToCloudinary(sourceToUpload);
+          console.log(`[CLOUDINARY] Uploading photo #${idx + 1}...`);
+          const uploadResult = await uploadPhotoToCloudinary(sourceToUpload);
 
-          if (!secureUrl || secureUrl.startsWith('data:image/') || secureUrl.startsWith('blob:')) {
+          if (!uploadResult.url || uploadResult.url.startsWith('data:image/') || uploadResult.url.startsWith('blob:')) {
             throw new Error('Cloudinary response did not contain a valid URL');
           }
 
+          console.log(`[CLOUDINARY] Photo #${idx + 1} uploaded successfully:`, uploadResult.url);
+
           const updatedPhoto: AdminPhotoSelection = {
             ...photo,
-            url: secureUrl,
-            publicId: '',
+            url: uploadResult.url,
+            publicId: uploadResult.publicId,
             status: 'success' as const,
             error: undefined
           };
@@ -686,13 +694,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         throw new Error('සමහර ඡායාරූප upload කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න හෝ අසාර්ථක ඡායාරූප ඉවත් කරන්න.');
       }
 
-      console.log('[4] Cloudinary uploads completed successfully!');
+      console.log('[6] Cloudinary uploads completed successfully. Results:', results.map(r => ({ url: r.url, publicId: r.publicId })));
 
       // Collect URLs and public_ids
       const finalPhotosArray = results.map(r => r.url);
       const finalCloudinaryPhotosArray = results.map(r => ({
         url: r.url,
-        publicId: r.publicId
+        publicId: r.publicId || ''
       }));
 
       const parsedOtherNames = otherNamesText
@@ -717,25 +725,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         sources: cleanedSources.length > 0 ? cleanedSources : [{ title: 'Official Custodians Documentation', publisher: 'Verified Registry', verifiedDate: '2024' }],
       };
 
-      console.log('[TRACE] Checking authentication state before write...');
-      console.log('[TRACE] Firebase current authenticated UID:', auth.currentUser?.uid || 'no-auth-user');
-
-      // Check document size and details as per Step 6
-      const sizeEstimationBytes = JSON.stringify(payload).length;
-      console.log('[TRACE] Serialized Payload Size Estimation:', sizeEstimationBytes, 'bytes');
-
-      // Strict serialization validation as per Step 7
+      console.log('[7] Sanitizing payload for Firestore...');
       const sanitizedPayload = validateAndSanitizeFirestorePayload(payload, 'elephant_data_form');
-      console.log('[TRACE] Sanitization & Validation check completed successfully. Payload is fully serializable.');
+      console.log('[8] Serialized Payload clean and ready for write. Elephant name:', sanitizedPayload.name);
 
-      // We call onSaveElephant to save the record in Firestore
+      console.log('[9] Initiating Firestore write via onSaveElephant...');
       await onSaveElephant(sanitizedPayload, editingId || undefined);
       
+      console.log('[10] Final registration result: SUCCESS! Elephant registered/updated in Firestore.');
+      console.log('==============================================');
       showToast(editingId ? 'පැතිකඩ සාර්ථකව යාවත්කාලීන විය!' : 'නව අලි පැතිකඩ සාර්ථකව ලියාපදිංචි කෙරිණි!');
       setAdminTab('elephants');
     } catch (err: any) {
-      console.error('Error saving elephant profile:', err);
-      alert(`Error saving elephant: ${err.message || err}`);
+      console.error('[ERROR] Error in registration pipeline:', err);
+      alert(`Registration error: ${err.message || err}`);
     } finally {
       setIsSaving(false);
     }
@@ -3450,14 +3453,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Firestore Connection & Write Diagnostic Card */}
+            {/* Full System Multi-Layer Diagnostics Card */}
             <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-700" />
-                <span>Firestore Connection & Write Diagnostic Test</span>
+                <span>සමස්ත පද්ධති සන්නිවේදන පරීක්ෂාව (Full System Pipeline Diagnostics)</span>
               </h3>
               <p className="text-xs text-zinc-500 font-medium">
-                මෙමඟින් Cloudinary රහිතව කෙලින්ම Firestore Database එකට කුඩා පරීක්ෂණ දත්තයක් (Tiny test document) ලියා තහවුරු කරගත හැක (Test Firestore write connection directly without Cloudinary).
+                Firebase Connection, Auth Status, Firestore Read, Firestore Write, සහ Cloudinary Image Upload යන සියලුම ස්ථර ස්වාධීනව එකින් එක පරීක්ෂා කර බලා වාර්තාව ලබාගන්න.
               </p>
 
               <div className="space-y-3 pt-1">
@@ -3467,9 +3470,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     try {
                       setIsTestingFirestore(true);
                       setFirestoreTestResult(null);
-                      const res = await runFirestoreDiagnosticTest();
-                      setFirestoreTestResult(`SUCCESS: Firestore write completed successfully! Connection is fully healthy.`);
-                      showToast('Firestore test write completed successfully!');
+                      const diag = await runCompleteSystemDiagnostics();
+                      const report = [
+                        `1. Firebase App Connection: ${diag.firebaseConnection.status ? '✅ PASS' : '❌ FAIL'} (${diag.firebaseConnection.message})`,
+                        `2. Firebase Auth State: ${diag.authStatus.status ? '✅ PASS' : 'ℹ️ PUBLIC'} (UID: ${diag.authStatus.uid || 'None'}, Email: ${diag.authStatus.email})`,
+                        `3. Firestore Document Write: ${diag.firestoreWrite.status ? '✅ PASS' : '❌ FAIL'} (${diag.firestoreWrite.message})`,
+                        `4. Firestore Document Read: ${diag.firestoreRead.status ? '✅ PASS' : '❌ FAIL'} (${diag.firestoreRead.message})`,
+                        `5. Cloudinary Image Upload: ${diag.cloudinaryUpload.status ? '✅ PASS' : '❌ FAIL'} (${diag.cloudinaryUpload.message})`,
+                      ].join('\n\n');
+                      
+                      const allPassed = diag.firebaseConnection.status && diag.firestoreWrite.status && diag.firestoreRead.status && diag.cloudinaryUpload.status;
+                      setFirestoreTestResult(allPassed ? `SUCCESS:\n\n${report}` : `DIAGNOSTIC REPORT:\n\n${report}`);
+                      showToast(allPassed ? 'සියලුම පද්ධති සාර්ථකව ක්‍රියාත්මකයි!' : 'පද්ධති පරීක්ෂාව සම්පූර්ණයි!');
                     } catch (err: any) {
                       setFirestoreTestResult(`ERROR: ${err.message || err}`);
                     } finally {
@@ -3484,17 +3496,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   ) : (
                     <ShieldCheck className="w-4 h-4" />
                   )}
-                  <span>{isTestingFirestore ? 'පරීක්ෂා කරමින් පවතී (Testing Connection)...' : 'Run Firestore Connection & Write Test'}</span>
+                  <span>{isTestingFirestore ? 'පද්ධතිය පරීක්ෂා කරමින් පවතී (Running System Diagnostic)...' : 'Run Full System Pipeline Diagnostics'}</span>
                 </button>
 
                 {firestoreTestResult && (
                   <div className={`p-4 rounded-2xl border text-xs leading-relaxed font-mono whitespace-pre-wrap ${
                     firestoreTestResult.startsWith('SUCCESS') 
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-                      : 'bg-red-50 border-red-200 text-red-900'
+                      : 'bg-zinc-50 border-zinc-300 text-zinc-900'
                   }`}>
-                    <div className="font-bold mb-1">
-                      {firestoreTestResult.startsWith('SUCCESS') ? '✅ DIAGNOSTIC PASSED' : '❌ DIAGNOSTIC FAILED'}
+                    <div className="font-bold mb-1 flex items-center gap-1.5">
+                      {firestoreTestResult.startsWith('SUCCESS') ? (
+                        <span className="text-emerald-700">✅ SYSTEM HEALTH: ALL SERVICES OPERATIONAL</span>
+                      ) : (
+                        <span className="text-amber-700">📋 SYSTEM DIAGNOSTIC RESULTS</span>
+                      )}
                     </div>
                     {firestoreTestResult}
                   </div>

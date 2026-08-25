@@ -11,8 +11,7 @@ import {
   arrayUnion,
   arrayRemove,
   serverTimestamp,
-  increment,
-  writeBatch
+  increment
 } from 'firebase/firestore';
 import { db, auth } from './config';
 import { UserProfile } from '../types/user';

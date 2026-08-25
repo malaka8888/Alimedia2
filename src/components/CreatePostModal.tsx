@@ -148,20 +148,24 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     try {
       setIsSubmitting(true);
 
-      if (imageToUse && imageToUse.startsWith('data:image/')) {
+      // Upload photo to Cloudinary first
+      if (imageToUse && (imageToUse.startsWith('data:image/') || imageToUse.startsWith('blob:'))) {
         try {
+          console.log('[USER_POST] Uploading user image to Cloudinary...');
           finalPhotoUrl = await uploadImageToCloudinary(imageToUse);
-          if (!finalPhotoUrl || finalPhotoUrl.startsWith('data:image/')) {
-            throw new Error('Cloudinary returned an invalid URL or fell back to base64.');
+          if (!finalPhotoUrl || finalPhotoUrl.startsWith('data:image/') || finalPhotoUrl.startsWith('blob:')) {
+            throw new Error('Cloudinary upload did not return a valid hosted URL.');
           }
+          console.log('[USER_POST] Cloudinary upload successful:', finalPhotoUrl);
         } catch (cloudinaryErr: any) {
           console.error('Failed to upload to Cloudinary:', cloudinaryErr);
-          setErrorMsg(language === 'si' 
-            ? `ඡායාරූපය Upload කිරීම අසාර්ථක විය: ${cloudinaryErr.message || cloudinaryErr}` 
-            : `Failed to upload photo to Cloudinary: ${cloudinaryErr.message || cloudinaryErr}`
+          setErrorMsg(
+            language === 'si'
+              ? `ඡායාරූපය Upload කිරීම අසාර්ථක විය: ${cloudinaryErr.message || cloudinaryErr}`
+              : `Failed to upload photo to Cloudinary: ${cloudinaryErr.message || cloudinaryErr}`
           );
           setIsSubmitting(false);
-          return; // Stop the save operation!
+          return;
         }
       }
 
@@ -181,15 +185,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         isStoryOnly: isStoryOnly,
       };
 
-      // Add to Firestore with safe timeout fallback
-      const submitPromise = addElephantPost(postPayload);
-      const timeoutPromise = new Promise<string>((resolve) => {
-        setTimeout(() => {
-          resolve('post_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
-        }, 3500);
-      });
-
-      const newPostId = await Promise.race([submitPromise, timeoutPromise]);
+      console.log('[USER_POST] Writing post document to Firestore...');
+      const newPostId = await addElephantPost(postPayload);
+      console.log('[USER_POST] Post document created successfully with ID:', newPostId);
 
       const createdPost: ElephantPost = {
         ...postPayload,
@@ -214,27 +212,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
       onPostSuccess(createdPost, selectedElephantId);
     } catch (err: any) {
-      console.error('Failed to publish post:', err);
-      // Fallback local representation
-      const fallbackId = 'local_' + Date.now();
-      const fallbackPost: ElephantPost = {
-        elephantId: selectedElephantId,
-        elephantName: selectedElephantObj.name,
-        elephantSinhalaName: selectedElephantObj.sinhalaName || '',
-        photoUrl: finalPhotoUrl,
-        caption: caption.trim() || `${selectedElephantObj.name}`,
-        authorUid: user?.uid || '',
-        authorName: finalAuthorName,
-        authorUsername: finalAuthorUsername,
-        authorPhotoURL: finalAuthorPhoto,
-        likesCount: 0,
-        likedBy: [],
-        isStory: autoShareStory || isStoryOnly,
-        isStoryOnly: isStoryOnly,
-        id: fallbackId,
-        createdAt: new Date(),
-      };
-      onPostSuccess(fallbackPost, selectedElephantId);
+      console.error('Failed to publish post to Firestore:', err);
+      setErrorMsg(
+        language === 'si'
+          ? `දත්ත සුරැකීම අසාර්ථක විය: ${err.message || err}`
+          : `Failed to save post: ${err.message || err}`
+      );
     } finally {
       setIsSubmitting(false);
     }

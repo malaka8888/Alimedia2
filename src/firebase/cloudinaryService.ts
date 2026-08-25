@@ -7,6 +7,11 @@ export interface CloudinaryConfig {
   enabled: boolean;
 }
 
+export interface CloudinaryUploadResult {
+  url: string;
+  publicId: string;
+}
+
 const SETTINGS_COLLECTION = 'settings';
 const CLOUDINARY_DOC = 'cloudinary';
 
@@ -15,7 +20,7 @@ let cachedConfig: CloudinaryConfig | null = null;
 
 /**
  * Fetch Cloudinary configurations from Firestore.
- * Falls back to environment variables if not set in database.
+ * Falls back to environment variables or user-provided defaults.
  */
 export async function getCloudinaryConfig(): Promise<CloudinaryConfig> {
   if (cachedConfig) {
@@ -35,10 +40,9 @@ export async function getCloudinaryConfig(): Promise<CloudinaryConfig> {
 
   try {
     const docRef = doc(db, SETTINGS_COLLECTION, CLOUDINARY_DOC);
-    // Wrap with short 1000ms timeout for ultra-fast fallback
     const snap = await Promise.race([
       getDoc(docRef),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
     ]);
 
     if (snap && typeof snap.exists === 'function' && snap.exists()) {
@@ -51,7 +55,7 @@ export async function getCloudinaryConfig(): Promise<CloudinaryConfig> {
       return cachedConfig;
     }
   } catch (err) {
-    console.warn('Error reading Cloudinary config from Firestore, using env fallbacks:', err);
+    console.warn('Error reading Cloudinary config from Firestore, using defaults:', err);
   }
 
   return defaultConf;
@@ -73,56 +77,82 @@ export async function saveCloudinaryConfig(config: CloudinaryConfig): Promise<vo
 
 /**
  * Uploads a base64 image or a File object directly to Cloudinary using Unsigned Uploads.
- * If Cloudinary is disabled, unconfigured, or the upload fails, it throws an error to prevent saving Base64 in Firestore.
+ * Returns both secure_url and public_id.
  */
-export async function uploadImageToCloudinary(imageSource: string | File): Promise<string> {
-  if (!imageSource) return '';
-
-  // If it's already an external HTTP/HTTPS URL (e.g. from existing uploads or CDN), return it directly!
-  if (typeof imageSource === 'string' && (imageSource.startsWith('https://') || imageSource.startsWith('http://'))) {
-    return imageSource;
+export async function uploadPhotoToCloudinary(imageSource: string | File): Promise<CloudinaryUploadResult> {
+  if (!imageSource) {
+    throw new Error('No image source provided for Cloudinary upload.');
   }
 
+  // If it's already an external HTTP/HTTPS URL (e.g. from existing uploads or CDN), return it directly
+  if (typeof imageSource === 'string' && (imageSource.startsWith('https://') || imageSource.startsWith('http://'))) {
+    return {
+      url: imageSource,
+      publicId: '',
+    };
+  }
+
+  const config = await getCloudinaryConfig();
+  const cloudName = config.cloudName || 'iffzqdhi';
+  const uploadPreset = config.uploadPreset || 'alimedia_uploads';
+
+  console.log('[CLOUDINARY] Upload started to cloud:', cloudName, 'preset:', uploadPreset);
+
+  const formData = new FormData();
+  formData.append('file', imageSource);
+  formData.append('upload_preset', uploadPreset);
+  formData.append('folder', 'alimedia_uploads');
+
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+
+  // 30-second timeout controller
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
   try {
-    const config = await getCloudinaryConfig();
-    const cloudName = config.cloudName || 'iffzqdhi';
-    const uploadPreset = config.uploadPreset || 'alimedia_uploads';
-
-    const formData = new FormData();
-    formData.append('file', imageSource);
-    formData.append('upload_preset', uploadPreset);
-
-    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-    
-    // Add 25-second timeout using AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
-
     const response = await fetch(url, {
       method: 'POST',
       body: formData,
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Cloudinary responded with status ${response.status}: ${errText}`);
+      console.error('[CLOUDINARY] API Error Response:', response.status, errText);
+      throw new Error(`Cloudinary error (${response.status}): ${errText}`);
     }
 
     const result = await response.json();
-    if (result.secure_url) {
-      return result.secure_url;
-    } else if (result.url) {
-      return result.url;
+    const finalUrl = result.secure_url || result.url;
+    const finalPublicId = result.public_id || '';
+
+    if (!finalUrl || finalUrl.startsWith('data:')) {
+      throw new Error('Cloudinary did not return a valid hosted image URL.');
     }
 
-    throw new Error('Cloudinary response did not contain secure_url or url');
+    console.log('[CLOUDINARY] Upload success:', { url: finalUrl, publicId: finalPublicId });
+    return {
+      url: finalUrl,
+      publicId: finalPublicId,
+    };
   } catch (err: any) {
-    console.error('Cloudinary upload error:', err);
-    throw new Error(err.message || 'Unknown Cloudinary error during photo upload.');
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Cloudinary upload timed out after 30 seconds. Please check your network.');
+    }
+    console.error('[CLOUDINARY] Upload error:', err);
+    throw err;
   }
+}
+
+/**
+ * Uploads an image to Cloudinary and returns only the URL string (for backwards compatibility).
+ */
+export async function uploadImageToCloudinary(imageSource: string | File): Promise<string> {
+  const result = await uploadPhotoToCloudinary(imageSource);
+  return result.url;
 }
 
 /**

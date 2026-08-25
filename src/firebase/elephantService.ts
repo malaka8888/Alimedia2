@@ -17,6 +17,7 @@ import {
 import { db, auth } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
 import { INITIAL_VERIFIED_ELEPHANTS } from '../data/initialVerifiedData';
+import { uploadPhotoToCloudinary } from './cloudinaryService';
 
 const ELEPHANTS_COLLECTION = 'elephants';
 const EVENTS_COLLECTION = 'cultural_events';
@@ -81,8 +82,37 @@ export const INITIAL_EVENTS: CulturalEvent[] = [
   }
 ];
 
+// Sanitizer helper to completely strip 'undefined' properties for Firestore SDK compatibility
+export function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (obj instanceof Date) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map(sanitizeForFirestore);
+  }
+  if (typeof obj === 'object') {
+    // Keep Firestore FieldValue / Timestamp as is
+    if (obj.constructor?.name === 'Timestamp' || obj.constructor?.name === 'FieldValueImpl') {
+      return obj;
+    }
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 /**
- * Fetch all elephants from Cloud Firestore with instant fallback so the app NEVER gets stuck.
+  * Fetch all elephants from Cloud Firestore with robust fallback.
  */
 export async function getElephants(): Promise<Elephant[]> {
   try {
@@ -98,6 +128,21 @@ export async function getElephants(): Promise<Elephant[]> {
       const list: Elephant[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        
+        // Ensure photos & cloudinaryPhotos compatibility
+        const rawPhotos: string[] = Array.isArray(data.photos) ? data.photos : [];
+        const rawCloudinary: { url: string; publicId: string }[] = Array.isArray(data.cloudinaryPhotos)
+          ? data.cloudinaryPhotos
+          : [];
+        
+        const finalPhotos = rawPhotos.length > 0
+          ? rawPhotos
+          : rawCloudinary.map((cp) => (typeof cp === 'string' ? cp : cp?.url)).filter(Boolean);
+
+        const finalCloudinary = rawCloudinary.length > 0
+          ? rawCloudinary
+          : finalPhotos.map((p) => ({ url: p, publicId: '' }));
+
         list.push({
           id: docSnap.id,
           name: data.name || 'Unnamed Elephant',
@@ -114,13 +159,15 @@ export async function getElephants(): Promise<Elephant[]> {
           physicalCharacteristics: data.physicalCharacteristics || '',
           description: data.description || '',
           peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
-          photos: Array.isArray(data.photos) ? data.photos : [],
+          photos: finalPhotos,
+          cloudinaryPhotos: finalCloudinary,
           sources: Array.isArray(data.sources) ? data.sources : [],
           verified: data.verified !== undefined ? Boolean(data.verified) : true,
           status: data.status || 'living',
           isFeatured: Boolean(data.isFeatured),
           isLive: Boolean(data.isLive),
           customBadge: data.customBadge || '',
+          followerCount: data.followerCount || 0,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });
@@ -129,7 +176,7 @@ export async function getElephants(): Promise<Elephant[]> {
       return list;
     })();
 
-    const list = await withTimeout(fetchPromise, 2000, [] as Elephant[]);
+    const list = await withTimeout(fetchPromise, 10000, [] as Elephant[]);
 
     if (list && list.length > 0) {
       try {
@@ -149,7 +196,6 @@ export async function getElephants(): Promise<Elephant[]> {
       }
     } catch (e) {}
 
-    // Fallback to verified Sri Lankan initial data
     return INITIAL_VERIFIED_ELEPHANTS;
   } catch (error) {
     console.warn('Firestore elephant query fallback active:', error);
@@ -179,6 +225,19 @@ export async function getElephantById(id: string): Promise<Elephant | null> {
     }
 
     const data = docSnap.data();
+    const rawPhotos: string[] = Array.isArray(data.photos) ? data.photos : [];
+    const rawCloudinary: { url: string; publicId: string }[] = Array.isArray(data.cloudinaryPhotos)
+      ? data.cloudinaryPhotos
+      : [];
+    
+    const finalPhotos = rawPhotos.length > 0
+      ? rawPhotos
+      : rawCloudinary.map((cp) => (typeof cp === 'string' ? cp : cp?.url)).filter(Boolean);
+
+    const finalCloudinary = rawCloudinary.length > 0
+      ? rawCloudinary
+      : finalPhotos.map((p) => ({ url: p, publicId: '' }));
+
     return {
       id: docSnap.id,
       name: data.name || '',
@@ -195,13 +254,15 @@ export async function getElephantById(id: string): Promise<Elephant | null> {
       physicalCharacteristics: data.physicalCharacteristics || '',
       description: data.description || '',
       peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
-      photos: Array.isArray(data.photos) ? data.photos : [],
+      photos: finalPhotos,
+      cloudinaryPhotos: finalCloudinary,
       sources: Array.isArray(data.sources) ? data.sources : [],
       verified: data.verified !== undefined ? Boolean(data.verified) : true,
       status: data.status || 'living',
       isFeatured: Boolean(data.isFeatured),
       isLive: Boolean(data.isLive),
       customBadge: data.customBadge || '',
+      followerCount: data.followerCount || 0,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
@@ -211,39 +272,19 @@ export async function getElephantById(id: string): Promise<Elephant | null> {
   }
 }
 
-// Sanitizer helper to ensure no 'undefined' fields reach Firestore SDK
-export function sanitizeForFirestore(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return null;
-  }
-  if (obj instanceof Date) {
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(sanitizeForFirestore).filter((item) => item !== undefined);
-  }
-  if (typeof obj === 'object') {
-    const cleaned: Record<string, any> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value !== undefined) {
-        cleaned[key] = sanitizeForFirestore(value);
-      }
-    }
-    return cleaned;
-  }
-  return obj;
-}
-
 /**
  * Add a new elephant record into Firestore
  */
 export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   try {
+    console.log('[FIRESTORE] [1] Starting addElephant write...');
+    console.log('[FIRESTORE] [2] Authenticated user UID:', auth.currentUser?.uid || 'no-auth-user');
+    
     const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
-    const docRef = doc(elephantsCol); // client-side ID generation is instant!
+    const docRef = doc(elephantsCol);
     const id = docRef.id;
 
-    console.log('[5] Firestore document reference created:', id);
+    console.log('[FIRESTORE] [3] Generated Document ID:', id);
 
     const payload = sanitizeForFirestore({
       ...elephantData,
@@ -251,20 +292,24 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       updatedAt: new Date(),
     });
 
-    console.log('[6] Firestore write started for adding elephant:', id);
-    console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
+    console.log('[FIRESTORE] [4] Writing payload to path:', docRef.path);
+    console.log('[FIRESTORE] [5] Payload preview:', {
+      name: payload.name,
+      photosCount: payload.photos?.length || 0,
+      cloudinaryPhotosCount: payload.cloudinaryPhotos?.length || 0,
+    });
 
-    // Await database write with 15-second timeout for full robustness
+    // Await database write with 20-second timeout for full robustness
     await withTimeoutReject(
       setDoc(docRef, payload),
-      15000,
-      'Database write timed out (15s limit). Please check your internet connection and try again.'
+      20000,
+      'Firestore write timed out (20s limit). Please check your internet connection and try again.'
     );
 
-    console.log('[7] Firestore write completed successfully for adding elephant:', id);
+    console.log('[FIRESTORE] [6] Firestore write confirmed SUCCESS for document ID:', id);
     return id;
-  } catch (error) {
-    console.error('Error adding elephant to Firestore:', error);
+  } catch (error: any) {
+    console.error('[FIRESTORE] Fatal error writing elephant document:', error);
     throw error;
   }
 }
@@ -274,31 +319,134 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
  */
 export async function updateElephant(id: string, elephantData: Partial<Elephant>): Promise<void> {
   try {
+    console.log('[FIRESTORE] [1] Starting updateElephant for ID:', id);
     const docRef = doc(db, ELEPHANTS_COLLECTION, id);
     const { id: _, ...rest } = elephantData;
-
-    console.log('[5] Firestore document reference created (update):', id);
 
     const payload = sanitizeForFirestore({
       ...rest,
       updatedAt: new Date(),
     });
 
-    console.log('[6] Firestore write started for updating elephant:', id);
-    console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
+    console.log('[FIRESTORE] [2] Submitting update payload to path:', docRef.path);
 
-    // Await database update with 15-second timeout for full robustness
     await withTimeoutReject(
       updateDoc(docRef, payload),
-      15000,
-      'Database update timed out (15s limit). Please check your internet connection and try again.'
+      20000,
+      'Firestore update timed out (20s limit). Please check your internet connection.'
     );
 
-    console.log('[7] Firestore write completed successfully for updating elephant:', id);
-  } catch (error) {
-    console.error(`Error updating elephant ${id}:`, error);
+    console.log('[FIRESTORE] [3] Firestore update confirmed SUCCESS for ID:', id);
+  } catch (error: any) {
+    console.error(`[FIRESTORE] Error updating elephant ${id}:`, error);
     throw error;
   }
+}
+
+/**
+ * Independent Diagnostic Tests to verify each layer individually
+ */
+export async function runCompleteSystemDiagnostics(): Promise<{
+  firebaseConnection: { status: boolean; message: string };
+  authStatus: { status: boolean; uid?: string; email?: string };
+  firestoreWrite: { status: boolean; docId?: string; message: string };
+  firestoreRead: { status: boolean; count?: number; message: string };
+  cloudinaryUpload: { status: boolean; url?: string; publicId?: string; message: string };
+}> {
+  const results = {
+    firebaseConnection: { status: false, message: 'Not run' },
+    authStatus: { status: false, uid: undefined as string | undefined, email: undefined as string | undefined },
+    firestoreWrite: { status: false, docId: undefined as string | undefined, message: 'Not run' },
+    firestoreRead: { status: false, count: 0, message: 'Not run' },
+    cloudinaryUpload: { status: false, url: undefined as string | undefined, publicId: undefined as string | undefined, message: 'Not run' },
+  };
+
+  // 1. Firebase config & connection check
+  try {
+    if (db && db.app) {
+      results.firebaseConnection = {
+        status: true,
+        message: `Connected to Firebase app [${db.app.name}] with Project ID: ${db.app.options.projectId}`,
+      };
+    }
+  } catch (e: any) {
+    results.firebaseConnection = { status: false, message: e.message || 'Firebase initialization check failed' };
+  }
+
+  // 2. Auth State Check
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    results.authStatus = {
+      status: true,
+      uid: currentUser.uid,
+      email: currentUser.email || 'Anonymous',
+    };
+  } else {
+    results.authStatus = {
+      status: false,
+      uid: undefined,
+      email: 'No active Firebase Auth user session (operating in public/client session)',
+    };
+  }
+
+  // 3. Firestore Write Check
+  try {
+    const testDocRef = doc(collection(db, 'diagnostics'), `diag_${Date.now()}`);
+    await setDoc(testDocRef, {
+      diagnosticTest: true,
+      timestamp: new Date(),
+      agent: 'Alimedia Diagnostic Suite',
+    });
+    results.firestoreWrite = {
+      status: true,
+      docId: testDocRef.id,
+      message: `Successfully wrote test document to /diagnostics/${testDocRef.id}`,
+    };
+  } catch (e: any) {
+    results.firestoreWrite = {
+      status: false,
+      docId: undefined,
+      message: `Firestore Write Failed: ${e.message || e}`,
+    };
+  }
+
+  // 4. Firestore Read Check
+  try {
+    const elephantsSnap = await getDocs(collection(db, ELEPHANTS_COLLECTION));
+    results.firestoreRead = {
+      status: true,
+      count: elephantsSnap.size,
+      message: `Successfully read ${elephantsSnap.size} elephant document(s) from collection /elephants`,
+    };
+  } catch (e: any) {
+    results.firestoreRead = {
+      status: false,
+      count: 0,
+      message: `Firestore Read Failed: ${e.message || e}`,
+    };
+  }
+
+  // 5. Cloudinary Upload Check
+  try {
+    // 1x1 test image
+    const test1x1Data = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    const uploadRes = await uploadPhotoToCloudinary(test1x1Data);
+    results.cloudinaryUpload = {
+      status: true,
+      url: uploadRes.url,
+      publicId: uploadRes.publicId,
+      message: `Successfully uploaded image to Cloudinary: ${uploadRes.url}`,
+    };
+  } catch (e: any) {
+    results.cloudinaryUpload = {
+      status: false,
+      url: undefined,
+      publicId: undefined,
+      message: `Cloudinary Upload Failed: ${e.message || e}`,
+    };
+  }
+
+  return results;
 }
 
 /**

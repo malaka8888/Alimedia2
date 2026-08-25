@@ -222,6 +222,19 @@ export default function App() {
       const list: Elephant[] = [];
       snap.forEach((docSnap) => {
         const data = docSnap.data();
+        const rawPhotos: string[] = Array.isArray(data.photos) ? data.photos : [];
+        const rawCloudinary: { url: string; publicId: string }[] = Array.isArray(data.cloudinaryPhotos)
+          ? data.cloudinaryPhotos
+          : [];
+        
+        const finalPhotos = rawPhotos.length > 0
+          ? rawPhotos
+          : rawCloudinary.map((cp) => (typeof cp === 'string' ? cp : cp?.url)).filter(Boolean);
+
+        const finalCloudinary = rawCloudinary.length > 0
+          ? rawCloudinary
+          : finalPhotos.map((p) => ({ url: p, publicId: '' }));
+
         list.push({
           id: docSnap.id,
           name: data.name || 'Unnamed Elephant',
@@ -238,7 +251,8 @@ export default function App() {
           physicalCharacteristics: data.physicalCharacteristics || '',
           description: data.description || '',
           peraheraParticipation: Array.isArray(data.peraheraParticipation) ? data.peraheraParticipation : [],
-          photos: Array.isArray(data.photos) ? data.photos : [],
+          photos: finalPhotos,
+          cloudinaryPhotos: finalCloudinary,
           sources: Array.isArray(data.sources) ? data.sources : [],
           verified: !!data.verified,
           status: data.status || 'living',
