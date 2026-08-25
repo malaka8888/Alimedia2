@@ -28,8 +28,7 @@ const dbId =
 let dbInstance;
 try {
   const options = {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
   };
   dbInstance = dbId ? initializeFirestore(app, options, dbId) : initializeFirestore(app, options);
 } catch (e) {

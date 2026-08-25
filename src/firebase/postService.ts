@@ -5,6 +5,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  setDoc,
   deleteDoc,
   serverTimestamp,
   query,
@@ -133,10 +134,10 @@ export async function addElephantPost(
     if (postData.elephantId && postData.photoUrl && !postData.isStoryOnly) {
       try {
         const elephantRef = doc(db, ELEPHANTS_COLLECTION, postData.elephantId);
-        await updateDoc(elephantRef, {
+        await setDoc(elephantRef, {
           photos: arrayUnion(postData.photoUrl),
           updatedAt: serverTimestamp(),
-        });
+        }, { merge: true });
       } catch (err) {
         console.warn('Could not append photo to elephant document:', err);
       }

@@ -299,11 +299,11 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
       cloudinaryPhotosCount: payload.cloudinaryPhotos?.length || 0,
     });
 
-    // Await database write with 20-second timeout for full robustness
+    // Await database write with 30-second timeout for full robustness
     await withTimeoutReject(
       setDoc(docRef, payload),
-      20000,
-      'Firestore write timed out (20s limit). Please check your internet connection and try again.'
+      30000,
+      'Firestore write timed out (30s limit). Please check your internet connection and try again.'
     );
 
     console.log('[FIRESTORE] [6] Firestore write confirmed SUCCESS for document ID:', id);
@@ -331,9 +331,9 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
     console.log('[FIRESTORE] [2] Submitting update payload to path:', docRef.path);
 
     await withTimeoutReject(
-      updateDoc(docRef, payload),
-      20000,
-      'Firestore update timed out (20s limit). Please check your internet connection.'
+      setDoc(docRef, payload, { merge: true }),
+      30000,
+      'Firestore update timed out (30s limit). Please check your internet connection.'
     );
 
     console.log('[FIRESTORE] [3] Firestore update confirmed SUCCESS for ID:', id);
