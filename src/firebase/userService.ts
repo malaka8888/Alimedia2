@@ -1,18 +1,25 @@
 import {
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
   arrayUnion,
   arrayRemove,
   serverTimestamp,
-  increment
+  increment,
+  writeBatch
 } from 'firebase/firestore';
 import { db, auth } from './config';
 import { UserProfile } from '../types/user';
 
 const USERS_COLLECTION = 'users';
 const ELEPHANTS_COLLECTION = 'elephants';
+const ELEPHANT_POSTS_COLLECTION = 'elephant_posts';
 
 /**
  * Get or initialize user profile in Firestore after Google Sign-in
@@ -164,4 +171,99 @@ export async function updateUserProfile(
     ...data,
     updatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * Fetch every registered user profile (Admin use)
+ */
+export async function getAllUsers(): Promise<UserProfile[]> {
+  try {
+    const usersCol = collection(db, USERS_COLLECTION);
+    const snap = await getDocs(usersCol);
+    const users: UserProfile[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      users.push({
+        uid: data.uid || docSnap.id,
+        email: data.email || '',
+        displayName: data.displayName || 'Elephant Fan',
+        username: data.username || '@user',
+        photoURL: data.photoURL || '',
+        bio: data.bio || '',
+        followedElephants: Array.isArray(data.followedElephants) ? data.followedElephants : [],
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+      });
+    });
+    // Newest first when createdAt is available
+    users.sort((a: any, b: any) => {
+      const aMs = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bMs = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bMs - aMs;
+    });
+    return users;
+  } catch (error) {
+    console.error('Error fetching all users:', error);
+    return [];
+  }
+}
+
+/**
+ * Permanently remove a user's profile (Admin use only).
+ * Cleans up their Firestore profile document, cascades removal from the
+ * followerCount of any elephants they followed, and deletes their
+ * community posts/stories so no orphaned data is left behind.
+ *
+ * Note: this only removes the Firestore-side account data. The underlying
+ * Firebase Auth identity (if any) is not deleted from here since that
+ * requires elevated Admin SDK privileges not available client-side; the
+ * user will simply no longer have a profile/content on the platform and
+ * would be treated as a brand-new user if they ever sign in again.
+ */
+export async function deleteUserAccount(userId: string): Promise<{
+  postsDeleted: number;
+  elephantsUpdated: number;
+}> {
+  let postsDeleted = 0;
+  let elephantsUpdated = 0;
+
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  const userSnap = await getDoc(userRef);
+  const followedElephants: string[] = userSnap.exists()
+    ? (userSnap.data().followedElephants || [])
+    : [];
+
+  // 1. Decrement followerCount on every elephant this user followed
+  if (followedElephants.length > 0) {
+    const updates = followedElephants.map(async (elephantId) => {
+      try {
+        const elephantRef = doc(db, ELEPHANTS_COLLECTION, elephantId);
+        await updateDoc(elephantRef, { followerCount: increment(-1) });
+        elephantsUpdated++;
+      } catch (e) {
+        // Elephant may no longer exist; ignore
+      }
+    });
+    await Promise.all(updates);
+  }
+
+  // 2. Delete this user's community posts/stories
+  try {
+    const postsCol = collection(db, ELEPHANT_POSTS_COLLECTION);
+    const postsQuery = query(postsCol, where('authorUid', '==', userId));
+    const postsSnap = await getDocs(postsQuery);
+    const deletions: Promise<void>[] = [];
+    postsSnap.forEach((postDoc) => {
+      deletions.push(deleteDoc(postDoc.ref));
+      postsDeleted++;
+    });
+    await Promise.all(deletions);
+  } catch (e) {
+    console.warn('Could not clean up user posts during account deletion:', e);
+  }
+
+  // 3. Delete the user's profile document itself
+  await deleteDoc(userRef);
+
+  return { postsDeleted, elephantsUpdated };
 }

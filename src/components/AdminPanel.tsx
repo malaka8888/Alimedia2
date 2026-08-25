@@ -29,6 +29,8 @@ import {
   Image as ImageIcon,
   Building2,
   User,
+  Users,
+  UserX,
   Star,
   Radio,
   ExternalLink,
@@ -63,6 +65,8 @@ import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
 import { resetAllCountsInFirestore } from '../firebase/migrationService';
 import { getCloudinaryConfig, saveCloudinaryConfig, uploadImageToCloudinary } from '../firebase/cloudinaryService';
 import { runFirestoreDiagnosticTest } from '../firebase/elephantService';
+import { getAllUsers, deleteUserAccount } from '../firebase/userService';
+import { UserProfile } from '../types/user';
 import { auth } from '../firebase/config';
 import { LOGO_URL } from './Navbar';
 
@@ -236,6 +240,7 @@ export type AdminCategoryTab =
   | 'editor'
   | 'posts'
   | 'events'
+  | 'users'
   | 'bulk_import'
   | 'database'
   | 'cloudinary';
@@ -341,6 +346,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [postsSearch, setPostsSearch] = useState('');
   const [postFilter, setPostFilter] = useState<'all' | 'stories' | 'feed'>('all');
 
+  // Registered Users State (Admin Management)
+  const [registeredUsers, setRegisteredUsers] = useState<UserProfile[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [usersSearch, setUsersSearch] = useState('');
+  const [deletingUserTarget, setDeletingUserTarget] = useState<UserProfile | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
   // Form Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>>({
@@ -418,6 +430,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [isAuthenticated, adminTab]);
 
+  // Load registered users when entering the users tab or overview
+  useEffect(() => {
+    if (isAuthenticated && (adminTab === 'users' || adminTab === 'overview')) {
+      loadUsers();
+    }
+  }, [isAuthenticated, adminTab]);
+
   const loadCommunityPosts = async () => {
     try {
       setIsLoadingPosts(true);
@@ -429,6 +448,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsLoadingPosts(false);
     }
   };
+
+  const loadUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      const users = await getAllUsers();
+      setRegisteredUsers(users);
+    } catch (err) {
+      console.warn('Could not load registered users:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  // Trigger Remove-User Confirmation Modal
+  const handleTriggerDeleteUser = (user: UserProfile) => {
+    setDeletingUserTarget(user);
+  };
+
+  // Confirm permanent removal of a user account from Firestore
+  const handleConfirmDeleteUser = async () => {
+    if (!deletingUserTarget || !deletingUserTarget.uid) return;
+    try {
+      setIsDeletingUser(true);
+      const res = await deleteUserAccount(deletingUserTarget.uid);
+      setRegisteredUsers((prev) => prev.filter((u) => u.uid !== deletingUserTarget.uid));
+      showToast(
+        `"${deletingUserTarget.displayName || deletingUserTarget.username}" ${res.postsDeleted} posts සමඟ Database එකෙන් ස්ථිරවම ඉවත් කරන ලදී!`
+      );
+      setDeletingUserTarget(null);
+      await loadCommunityPosts();
+    } catch (err: any) {
+      console.error('Error deleting user account:', err);
+      alert(`පරිශීලකයා ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const filteredUsers = registeredUsers.filter((u) => {
+    if (!usersSearch.trim()) return true;
+    const q = usersSearch.trim().toLowerCase();
+    return (
+      (u.displayName || '').toLowerCase().includes(q) ||
+      (u.username || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q)
+    );
+  });
 
   // Handle Login
   const handleLogin = (e: React.FormEvent) => {
@@ -1246,6 +1312,99 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Remove User Confirmation Modal */}
+      {deletingUserTarget && (
+        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-red-950">
+                  පරිශීලකයා ඉවත් කරන්න (Remove User)
+                </h3>
+                <p className="text-xs text-red-700 font-medium">
+                  මෙම ක්‍රියාව ආපසු හැරවිය නොහැක (Permanent Action)
+                </p>
+              </div>
+            </div>
+
+            {/* User Target Info */}
+            <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl overflow-hidden border border-red-200 bg-red-100 flex-shrink-0">
+                {deletingUserTarget.photoURL ? (
+                  <img
+                    src={deletingUserTarget.photoURL}
+                    alt={deletingUserTarget.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-full h-full p-2.5 text-red-400" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-extrabold text-sm text-red-950 truncate">
+                  {deletingUserTarget.displayName}
+                </h4>
+                <p className="text-xs text-red-800 font-mono truncate">
+                  {deletingUserTarget.username} • {deletingUserTarget.email || 'No email'}
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-200 text-red-900">
+                  UID: {deletingUserTarget.uid?.slice(0, 12)}...
+                </span>
+              </div>
+            </div>
+
+            {/* Cleanup Warning List */}
+            <div className="space-y-2 text-xs text-zinc-700 bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
+              <p className="font-bold text-zinc-900 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-red-600" />
+                <span>පහත සියලුම දත්ත Cloud Firestore වෙතින් ස්ථිරවම මකා දැමෙනු ඇත:</span>
+              </p>
+              <ul className="space-y-1.5 pl-5 list-disc text-zinc-600 text-[11px]">
+                <li><b>User Profile:</b> පරිශීලකයාගේ ගිණුම් තොරතුරු, Bio සහ Photo</li>
+                <li><b>Community Posts & Stories:</b> මොහු පළ කළ සියලු ඡායාරූප, Stories හා Posts</li>
+                <li><b>Follows:</b> ඔහු Follow කළ අලි ඇතුන්ගේ Follower ගණන් යාවත්කාලීන කිරීම</li>
+              </ul>
+              <p className="text-[11px] text-zinc-500 pt-1">
+                Note: මෙයින් Firestore Profile එක සහ අදාළ දත්ත පමණක් ඉවත් වේ. පරිශීලකයාට නැවත Sign in වීමට හැකිය (නව ගිණුමක් ලෙස).
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingUserTarget(null)}
+                disabled={isDeletingUser}
+                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                disabled={isDeletingUser}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center gap-2"
+              >
+                {isDeletingUser ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>ඉවත් කරමින් පවතී...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserX className="w-4 h-4" />
+                    <span>ඔව්, පරිශීලකයා ඉවත් කරන්න (Remove User)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Admin Top Header (Mobile Optimized) */}
       <header className="sticky top-0 z-40 bg-[#FAF9F5] border-b border-zinc-200/80 px-3 sm:px-6 py-2.5 sm:py-3 shadow-2xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
@@ -1364,6 +1523,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <span>පෙරහැර වැඩසටහන් ({events.length})</span>
           </button>
 
+          {/* Registered Users */}
+          <button
+            onClick={() => setAdminTab('users')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'users'
+                ? 'bg-[#062E22] text-white shadow-sm'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>පරිශීලකයින් (Users) ({registeredUsers.length})</span>
+          </button>
+
           {/* Bulk Import */}
           <button
             onClick={() => setAdminTab('bulk_import')}
@@ -1413,7 +1585,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'overview' && (
           <div className="space-y-6 animate-fadeIn">
             {/* Quick Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 sm:gap-3">
               <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
                 <div className="text-[10px] font-extrabold text-zinc-400 uppercase">Total Elephants</div>
                 <div className="text-2xl font-black text-[#062E22] mt-1">{elephants.length}</div>
@@ -1471,6 +1643,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 <div className="text-2xl font-black text-rose-900 mt-1">{events.length}</div>
                 <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පෙරහැර වැඩසටහන්</div>
+              </div>
+
+              <div
+                onClick={() => setAdminTab('users')}
+                className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs cursor-pointer hover:border-emerald-300 transition-colors"
+              >
+                <div className="text-[10px] font-extrabold text-teal-600 uppercase flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  <span>Users</span>
+                </div>
+                <div className="text-2xl font-black text-teal-900 mt-1">{registeredUsers.length}</div>
+                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">ලියාපදිංචි පරිශීලකයින්</div>
               </div>
             </div>
 
@@ -3082,6 +3266,140 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ============================================================= */}
+        {/* CATEGORY: REGISTERED USERS (VIEW / REMOVE)                     */}
+        {/* ============================================================= */}
+        {adminTab === 'users' && (
+          <div className="space-y-4 animate-fadeIn">
+            {/* Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={usersSearch}
+                  onChange={(e) => setUsersSearch(e.target.value)}
+                  placeholder="නම, Username හෝ Email සොයන්න..."
+                  className="w-full pl-9 pr-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={loadUsers}
+                disabled={isLoadingUsers}
+                className="w-full sm:w-auto px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {isLoadingUsers ? (
+              <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Loading users...</span>
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs">
+                කිසිදු ලියාපදිංචි පරිශීලකයෙකු හමු නොවීය.
+              </div>
+            ) : (
+              <>
+                {/* Mobile View: Responsive User Cards */}
+                <div className="block lg:hidden space-y-3">
+                  {filteredUsers.map((u) => (
+                    <div
+                      key={u.uid}
+                      className="bg-white rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 border border-zinc-200 flex-shrink-0">
+                          {u.photoURL ? (
+                            <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-full h-full p-2 text-zinc-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-extrabold text-sm text-[#062E22] truncate">{u.displayName}</h4>
+                          <p className="text-xs text-zinc-500 font-mono truncate">{u.username}</p>
+                          <p className="text-[10px] text-zinc-400 truncate">{u.email || 'No email'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
+                        <span className="text-[10px] text-zinc-400">
+                          {u.followedElephants?.length || 0} Following
+                        </span>
+                        <button
+                          onClick={() => handleTriggerDeleteUser(u)}
+                          className="py-2 px-3 rounded-xl bg-red-50 hover:bg-red-100 text-xs font-bold text-red-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Remove User</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop View: High-density Table */}
+                <div className="hidden lg:block bg-white rounded-3xl border border-zinc-200 shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-zinc-50 border-b border-zinc-200">
+                        <tr>
+                          <th className="py-3 px-4 font-extrabold text-zinc-500 uppercase text-[10px]">Profile</th>
+                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px]">Email</th>
+                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px] text-center">Following</th>
+                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px]">Joined</th>
+                          <th className="py-3 px-4 font-extrabold text-zinc-500 uppercase text-[10px] text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {filteredUsers.map((u) => {
+                          const joined = u.createdAt?.toDate
+                            ? u.createdAt.toDate().toLocaleDateString()
+                            : (u.createdAt?.seconds ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A');
+                          return (
+                            <tr key={u.uid} className="hover:bg-zinc-50/80 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 border-2 border-zinc-200 flex-shrink-0">
+                                    {u.photoURL ? (
+                                      <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <User className="w-full h-full p-2 text-zinc-400" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-extrabold text-sm text-[#062E22] truncate">{u.displayName}</div>
+                                    <div className="text-[11px] text-zinc-400 font-mono truncate">{u.username}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-3 text-zinc-600 truncate max-w-[220px]">{u.email || 'No email'}</td>
+                              <td className="py-3 px-3 text-center font-mono text-zinc-600">{u.followedElephants?.length || 0}</td>
+                              <td className="py-3 px-3 text-zinc-400 text-[11px]">{joined}</td>
+                              <td className="py-3 px-4 text-right">
+                                <button
+                                  onClick={() => handleTriggerDeleteUser(u)}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Permanently Remove User"
+                                >
+                                  <UserX className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
