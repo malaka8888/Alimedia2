@@ -64,6 +64,7 @@ import { resetAllCountsInFirestore } from '../firebase/migrationService';
 import { getCloudinaryConfig, saveCloudinaryConfig, uploadImageToCloudinary } from '../firebase/cloudinaryService';
 import { runFirestoreDiagnosticTest } from '../firebase/elephantService';
 import { auth } from '../firebase/config';
+import { LOGO_URL } from './Navbar';
 
 export interface AdminPhotoSelection {
   id: string;
@@ -1064,13 +1065,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-2xl bg-white border border-zinc-200 p-1 flex items-center justify-center shadow-md">
                 <img
-                  src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
-                  alt="අලිMedia Logo"
+                  src={LOGO_URL}
+                  alt="අලි Media Logo"
                   className="w-full h-full object-contain"
                 />
               </div>
               <div>
-                <h2 className="text-xl font-extrabold tracking-tight">අලිMedia Admin</h2>
+                <h2 className="text-xl font-extrabold tracking-tight">අලි Media Admin</h2>
                 <p className="text-xs text-zinc-500 font-medium">පාලක මණ්ඩල ප්‍රවේශය (Full Control)</p>
               </div>
             </div>
@@ -1252,8 +1253,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-zinc-200 p-0.5 flex items-center justify-center shadow-md flex-shrink-0">
               <img
-                src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
-                alt="අලිMedia Logo"
+                src={LOGO_URL}
+                alt="අලි Media Logo"
                 className="w-full h-full object-contain"
               />
             </div>

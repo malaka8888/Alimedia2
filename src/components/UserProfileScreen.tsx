@@ -17,6 +17,7 @@ import {
   Settings
 } from 'lucide-react';
 import { ElephantIcon } from './ElephantIcon';
+import { LOGO_URL } from './Navbar';
 
 interface UserProfileScreenProps {
   elephants: Elephant[];
@@ -24,7 +25,7 @@ interface UserProfileScreenProps {
   onSelectElephant: (elephant: Elephant) => void;
   onOpenDirectory: () => void;
   darkMode?: boolean;
-  onToggleDarkMode?: () => void;
+  onToggleDarkMode?: (e?: React.MouseEvent) => void;
   onToggleLanguage?: () => void;
 }
 
@@ -83,7 +84,7 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({
           <div className="relative mx-auto w-20 h-20 rounded-full p-1 bg-white/20 shadow-2xl flex items-center justify-center">
             <div className="w-full h-full rounded-full bg-black flex items-center justify-center p-2">
               <img
-                src="https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png"
+                src={LOGO_URL}
                 alt="Aliya Media"
                 className="w-full h-full object-contain"
               />

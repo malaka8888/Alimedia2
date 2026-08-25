@@ -4,7 +4,7 @@ import { ElephantIcon } from './ElephantIcon';
 import { Language, translations } from '../utils/translations';
 import { useAuth } from '../firebase/authContext';
 
-export const LOGO_URL = 'https://i.ibb.co/hRkdzTMy/file-0000000042e0820781e860d5f21352ee.png';
+export const LOGO_URL = 'https://i.ibb.co/WN3YG3gL/file-000000002f988208ab120789401f40f8.png';
 
 interface NavbarProps {
   currentTab: 'home' | 'elephant' | 'notifications' | 'profile' | 'admin';
@@ -13,7 +13,7 @@ interface NavbarProps {
   onToggleLanguage: () => void;
   onOpenAdmin: () => void;
   darkMode: boolean;
-  onToggleDarkMode: () => void;
+  onToggleDarkMode: (e?: React.MouseEvent) => void;
   hasNewNotifications?: boolean;
 }
 
@@ -33,27 +33,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-white/10 transition-colors">
-      <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Brand Logo */}
+      <div className="max-w-4xl mx-auto px-4 h-24 sm:h-28 flex items-center justify-between">
+        {/* Brand Logo - Instagram Style */}
         <div
           onClick={() => onSelectTab('home')}
-          className="flex items-center gap-2.5 cursor-pointer group"
+          className="flex items-center cursor-pointer group active:scale-95 transition-transform"
         >
-          <div className="w-8 h-8 rounded-lg overflow-hidden shadow-xs flex items-center justify-center bg-white dark:bg-black border border-zinc-200 dark:border-white/15 group-hover:scale-105 transition-transform">
-            <img
-              src={LOGO_URL}
-              alt="අලිMedia Logo"
-              className="w-full h-full object-contain p-0.5"
-            />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-lg tracking-tight text-[#062E22] dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
-                අලි<span className="text-black dark:text-white font-extrabold">Media</span>
-              </span>
-              <span className="w-1.5 h-1.5 bg-[#062E22] dark:bg-white rounded-full" />
-            </div>
-          </div>
+          <img
+            src={LOGO_URL}
+            alt="අලි Media"
+            referrerPolicy="no-referrer"
+            className="h-18 sm:h-22 w-auto object-contain logo-theme-aware"
+          />
         </div>
 
         {/* Desktop Navigation Tabs */}

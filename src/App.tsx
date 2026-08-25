@@ -153,8 +153,44 @@ export default function App() {
     }
   }, [darkMode]);
 
-  const toggleDarkMode = () => {
-    setDarkMode((prev) => !prev);
+  const toggleDarkMode = (e?: React.MouseEvent) => {
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      // Find origin near top-right toggle or click position
+      const x = e?.clientX ?? (window.innerWidth - 45);
+      const y = e?.clientY ?? 45;
+      
+      // Calculate max radius to cover screen down to bottom-left
+      const endRadius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y)
+      );
+
+      const isGoingDark = !darkMode;
+
+      const transition = (document as any).startViewTransition(() => {
+        setDarkMode(isGoingDark);
+      });
+
+      transition.ready.then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius * 1.05}px at ${x}px ${y}px)`
+            ],
+          },
+          {
+            duration: 480,
+            easing: 'cubic-bezier(0.25, 1, 0.4, 1)',
+            pseudoElement: '::view-transition-new(root)',
+          }
+        );
+      }).catch(() => {
+        // Fallback safely if animation fails
+      });
+    } else {
+      setDarkMode((prev) => !prev);
+    }
   };
 
   const toggleLanguage = () => {
