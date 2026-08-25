@@ -27,7 +27,7 @@ const CACHE_ELEPHANTS_KEY = 'alimedia_cached_elephants';
 const CACHE_EVENTS_KEY = 'alimedia_cached_events';
 
 // Timeout helper to avoid infinite hanging when network or firestore rules are unreachable
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 10000, fallback: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs))
@@ -211,6 +211,29 @@ export async function getElephantById(id: string): Promise<Elephant | null> {
   }
 }
 
+// Sanitizer helper to ensure no 'undefined' fields reach Firestore SDK
+export function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (obj instanceof Date) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore).filter((item) => item !== undefined);
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 /**
  * Add a new elephant record into Firestore
  */
@@ -222,11 +245,11 @@ export async function addElephant(elephantData: Omit<Elephant, 'id' | 'createdAt
 
     console.log('[5] Firestore document reference created:', id);
 
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...elephantData,
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
+    });
 
     console.log('[6] Firestore write started for adding elephant:', id);
     console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
@@ -256,10 +279,10 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
 
     console.log('[5] Firestore document reference created (update):', id);
 
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...rest,
       updatedAt: new Date(),
-    };
+    });
 
     console.log('[6] Firestore write started for updating elephant:', id);
     console.log('[TRACE] currentUser UID:', auth.currentUser?.uid || 'no-auth-user');
@@ -661,16 +684,13 @@ export async function addCulturalEvent(eventData: Omit<CulturalEvent, 'id' | 'cr
     const docRef = doc(eventsCol);
     const id = docRef.id;
 
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...eventData,
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
-
-    setDoc(docRef, payload).catch((error) => {
-      console.warn('Background addCulturalEvent sync notice:', error);
     });
 
+    await setDoc(docRef, payload);
     return id;
   } catch (error) {
     console.error('Error adding cultural event:', error);
@@ -683,14 +703,12 @@ export async function updateCulturalEvent(id: string, eventData: Partial<Cultura
     const docRef = doc(db, EVENTS_COLLECTION, id);
     const { id: _, ...rest } = eventData;
 
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...rest,
       updatedAt: new Date(),
-    };
-
-    updateDoc(docRef, payload).catch((error) => {
-      console.warn(`Background updateCulturalEvent sync notice for ${id}:`, error);
     });
+
+    await updateDoc(docRef, payload);
   } catch (error) {
     console.error(`Error updating cultural event ${id}:`, error);
     throw error;

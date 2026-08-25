@@ -78,21 +78,25 @@ export async function saveCloudinaryConfig(config: CloudinaryConfig): Promise<vo
 export async function uploadImageToCloudinary(imageSource: string | File): Promise<string> {
   if (!imageSource) return '';
 
+  // If it's already an external HTTP/HTTPS URL (e.g. from existing uploads or CDN), return it directly!
+  if (typeof imageSource === 'string' && (imageSource.startsWith('https://') || imageSource.startsWith('http://'))) {
+    return imageSource;
+  }
+
   try {
     const config = await getCloudinaryConfig();
-    if (!config.enabled || !config.cloudName || !config.uploadPreset) {
-      throw new Error('Cloudinary integration is disabled or not configured in settings.');
-    }
+    const cloudName = config.cloudName || 'iffzqdhi';
+    const uploadPreset = config.uploadPreset || 'alimedia_uploads';
 
     const formData = new FormData();
     formData.append('file', imageSource);
-    formData.append('upload_preset', config.uploadPreset);
+    formData.append('upload_preset', uploadPreset);
 
-    const url = `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`;
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
     
-    // Add 15-second timeout using AbortController to prevent infinite hanging
+    // Add 25-second timeout using AbortController
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const response = await fetch(url, {
       method: 'POST',

@@ -620,19 +620,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       
       // 1. Process local/pending files to Cloudinary in parallel!
       console.log('[3] Starting concurrent Cloudinary upload for pending photos...');
-      
-      const config = await getCloudinaryConfig();
-      const cloudName = config.cloudName || 'iffzqdhi';
-      const uploadPreset = config.uploadPreset || 'alimedia_uploads';
 
       const uploadPromises = photoSelections.map(async (photo, idx) => {
-        // Skip already-successful uploads
-        if (photo.status === 'success') {
+        // Skip already-successful uploads that have permanent URLs
+        if (photo.status === 'success' && photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:')) {
           return photo;
         }
 
-        if (!photo.file) {
-          // Fallback if URL exists but status wasn't success
+        if (!photo.file && photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:')) {
           return {
             ...photo,
             status: 'success' as const
@@ -643,38 +638,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing' as const } : p));
         
         try {
-          // Compress client-side
-          const compressedDataUrl = await compressImageFile(photo.file, 1600, 1600, 0.85);
-          
+          let sourceToUpload: string | File = photo.file || photo.url;
+          if (photo.file) {
+            // Compress client-side to ensure fast uploads
+            sourceToUpload = await compressImageFile(photo.file, 1600, 1600, 0.85);
+          }
+
           // Update status to uploading
           setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' as const } : p));
 
-          // Post to Cloudinary
-          const fd = new FormData();
-          fd.append('file', compressedDataUrl);
-          fd.append('upload_preset', uploadPreset);
-          fd.append('folder', 'alimedia_uploads');
+          // Post to Cloudinary using standardized service
+          const secureUrl = await uploadImageToCloudinary(sourceToUpload);
 
-          const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-          const response = await fetch(url, {
-            method: 'POST',
-            body: fd,
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Cloudinary responded with ${response.status}: ${errorText}`);
-          }
-
-          const result = await response.json();
-          if (!result.secure_url) {
-            throw new Error('Cloudinary response did not contain secure_url');
+          if (!secureUrl || secureUrl.startsWith('data:image/') || secureUrl.startsWith('blob:')) {
+            throw new Error('Cloudinary response did not contain a valid URL');
           }
 
           const updatedPhoto: AdminPhotoSelection = {
             ...photo,
-            url: result.secure_url,
-            publicId: result.public_id || '',
+            url: secureUrl,
+            publicId: '',
             status: 'success' as const,
             error: undefined
           };
@@ -2711,32 +2694,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               type="button"
                               onClick={async () => {
                                 // Trigger upload specifically for this failed photo
-                                if (!photo.file) return;
+                                if (!photo.file && (!photo.url || photo.url.startsWith('blob:'))) return;
                                 setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing', error: undefined } : p));
                                 try {
-                                  const compressedDataUrl = await compressImageFile(photo.file, 1600, 1600, 0.85);
+                                  let source: string | File = photo.file || photo.url;
+                                  if (photo.file) {
+                                    source = await compressImageFile(photo.file, 1600, 1600, 0.85);
+                                  }
                                   setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' } : p));
                                   
-                                  const config = await getCloudinaryConfig();
-                                  const cloudName = config.cloudName || 'iffzqdhi';
-                                  const uploadPreset = config.uploadPreset || 'alimedia_uploads';
+                                  const secureUrl = await uploadImageToCloudinary(source);
+                                  if (!secureUrl || secureUrl.startsWith('data:image/')) {
+                                    throw new Error('Cloudinary upload returned invalid response');
+                                  }
 
-                                  const fd = new FormData();
-                                  fd.append('file', compressedDataUrl);
-                                  fd.append('upload_preset', uploadPreset);
-                                  fd.append('folder', 'alimedia_uploads');
-
-                                  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-                                    method: 'POST',
-                                    body: fd,
-                                  });
-
-                                  if (!response.ok) throw new Error('Cloudinary failed');
-                                  const res = await response.json();
                                   setPhotoSelections(prev => prev.map(p => p.id === photo.id ? {
                                     ...p,
-                                    url: res.secure_url,
-                                    publicId: res.public_id || '',
+                                    url: secureUrl,
+                                    publicId: '',
                                     status: 'success'
                                   } : p));
                                 } catch (e: any) {

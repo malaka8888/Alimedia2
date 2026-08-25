@@ -17,6 +17,7 @@ import {
 import { db } from './config';
 import { ElephantPost } from '../types/elephant';
 import { INITIAL_POSTS } from '../data/initialPosts';
+import { sanitizeForFirestore } from './elephantService';
 
 const POSTS_COLLECTION = 'elephant_posts';
 const ELEPHANTS_COLLECTION = 'elephants';
@@ -89,7 +90,7 @@ export function formatRelativeTime(createdAt: any, language: 'si' | 'en' = 'si')
   return language === 'si' ? `දින ${diffDays}කට පෙර` : `${diffDays}d ago`;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallback: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 10000, fallback: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs))
@@ -119,12 +120,14 @@ export async function addElephantPost(
 ): Promise<string> {
   try {
     const postsCol = collection(db, POSTS_COLLECTION);
-    const docRef = await addDoc(postsCol, {
+    const cleanPayload = sanitizeForFirestore({
       ...postData,
       likesCount: postData.likesCount || 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    const docRef = await addDoc(postsCol, cleanPayload);
 
     // Also link the photo into the Elephant profile's photo gallery if not story only
     if (postData.elephantId && postData.photoUrl && !postData.isStoryOnly) {

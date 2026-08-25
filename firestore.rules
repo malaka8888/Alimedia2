@@ -31,6 +31,12 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // System and Cloudinary configurations
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // User profiles and followed elephants list
     match /users/{userId} {
       allow read: if true;
