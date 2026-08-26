@@ -194,7 +194,7 @@ interface AdminPanelProps {
   events: CulturalEvent[];
   onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
   onSaveElephantsBatch?: (operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string; }[]) => Promise<void>;
-  onDeleteElephant: (id: string) => Promise<{
+  onDeleteElephant: (id: string, name?: string, sinhalaName?: string) => Promise<{
     deletedElephantName: string;
     postsDeleted: number;
     usersUpdated: number;
@@ -772,7 +772,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!deletingElephantTarget || !deletingElephantTarget.id) return;
     try {
       setIsDeletingCascade(true);
-      const res = await onDeleteElephant(deletingElephantTarget.id);
+      const res = await onDeleteElephant(
+        deletingElephantTarget.id,
+        deletingElephantTarget.name,
+        deletingElephantTarget.sinhalaName
+      );
       
       const postsCount = res && typeof res === 'object' && 'postsDeleted' in res ? res.postsDeleted : 0;
       showToast(

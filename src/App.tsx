@@ -559,8 +559,8 @@ export default function App() {
     }).catch(() => {});
   };
 
-  const handleDeleteElephant = async (id: string) => {
-    const result = await deleteElephantCascade(id);
+  const handleDeleteElephant = async (id: string, name?: string, sinhalaName?: string) => {
+    const result = await deleteElephantCascade(id, name, sinhalaName);
     showNotification(
       language === 'si'
         ? `${result.deletedElephantName} සහ සම්බන්ධිත සියලු දත්ත (${result.postsDeleted} posts) සම්පූර්ණයෙන්ම ඉවත් කෙරිණි.`

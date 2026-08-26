@@ -211,7 +211,7 @@ export async function getElephants(): Promise<Elephant[]> {
 export async function getElephantById(id: string): Promise<Elephant | null> {
   try {
     const docRef = doc(db, ELEPHANTS_COLLECTION, id);
-    const docSnap = await getDoc(docRef);
+    const docSnap = await withRetry(() => getDoc(docRef));
 
     if (!docSnap.exists()) {
       return null;
@@ -558,29 +558,38 @@ export async function deleteElephant(id: string): Promise<void> {
  * 2. Remove this elephant ID from all users' `followedElephants` lists in `users`
  * 3. Remove this elephant from any `cultural_events` participation lists
  * 4. Delete the elephant document itself from `elephants`
+ *
+ * `knownName` / `knownSinhalaName` should be passed in whenever the caller already
+ * has the elephant loaded (e.g. from the live admin list) - this avoids an extra
+ * Firestore read on the delete path entirely, which previously could fail with a
+ * "client is offline" error and abort the whole deletion even though nothing was
+ * actually wrong with the write itself.
  */
-export async function deleteElephantCascade(elephantId: string): Promise<{
+export async function deleteElephantCascade(
+  elephantId: string,
+  knownName?: string,
+  knownSinhalaName?: string
+): Promise<{
   deletedElephantName: string;
   postsDeleted: number;
   usersUpdated: number;
   eventsUpdated: number;
 }> {
   try {
-    // 1. Fetch elephant document to retrieve names for reference matching.
-    // This is only used for best-effort legacy name matching below (step 4) -
-    // it must never block the actual deletion, so a failure here (including a
-    // transient "client is offline" read error) is logged and skipped rather
-    // than aborting the whole cascade delete.
     const elephantRef = doc(db, ELEPHANTS_COLLECTION, elephantId);
-    let elephantName = '';
-    let elephantSinhalaName = '';
-    try {
-      const elephantSnap = await withRetry(() => getDoc(elephantRef));
-      const elephantData = elephantSnap.exists() ? elephantSnap.data() : null;
-      elephantName = elephantData?.name || '';
-      elephantSinhalaName = elephantData?.sinhalaName || '';
-    } catch (lookupErr) {
-      console.warn(`Could not read elephant ${elephantId} before delete (continuing anyway):`, lookupErr);
+
+    // Only hit the network for the name if the caller didn't already give it to us.
+    let elephantName = knownName || '';
+    let elephantSinhalaName = knownSinhalaName || '';
+    if (!elephantName) {
+      try {
+        const elephantSnap = await withRetry(() => getDoc(elephantRef));
+        const elephantData = elephantSnap.exists() ? elephantSnap.data() : null;
+        elephantName = elephantData?.name || '';
+        elephantSinhalaName = elephantData?.sinhalaName || '';
+      } catch (lookupErr) {
+        console.warn(`Could not read elephant ${elephantId} before delete (continuing anyway):`, lookupErr);
+      }
     }
 
     // 2. Cascade delete all community posts and stories for this elephant
