@@ -425,6 +425,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
+  // Error banner state - used INSTEAD of window.alert().
+  // window.alert()/confirm() are unreliable inside embedded/sandboxed webviews
+  // (app-builder preview panes, in-app browsers, PWA shells, etc.) - they can be
+  // silently blocked or throw, which makes actions like Save/Delete look like
+  // "nothing happens" even though a real error occurred. All error feedback in
+  // this panel is rendered as in-app UI instead so it always displays.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const showError = (msg: string) => {
+    setErrorMessage(msg);
+  };
+
+  // Generic in-app confirmation modal state - replaces window.confirm() for the
+  // same reason as above (confirm() can be blocked/auto-dismissed in webviews,
+  // which would silently skip the action it was guarding).
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
+  const requestConfirm = (message: string, onConfirm: () => void | Promise<void>) => {
+    setConfirmDialog({ message, onConfirm });
+  };
+
   // Load community posts when entering moderation tab or overview
   useEffect(() => {
     if (isAuthenticated) {
@@ -482,7 +504,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       await loadCommunityPosts();
     } catch (err: any) {
       console.error('Error deleting user account:', err);
-      alert(`පරිශීලකයා ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
+      showError(`පරිශීලකයා ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
     } finally {
       setIsDeletingUser(false);
     }
@@ -609,7 +631,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     console.log('[3] Current Admin role status:', isAuthenticated ? 'Admin Authenticated' : 'Guest/Public');
 
     if (!formData.name.trim()) {
-      alert('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
+      showError('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
       return;
     }
 
@@ -732,7 +754,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setAdminTab('elephants');
     } catch (err: any) {
       console.error('[ERROR] Error in registration pipeline:', err);
-      alert(`Registration error: ${err.message || err}`);
+      showError(`Registration error: ${err.message || err}`);
     } finally {
       setIsSaving(false);
     }
@@ -742,24 +764,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleQuickVerify = async (elephant: Elephant) => {
     if (!elephant.id) return;
     const newStatus = !elephant.verified;
-    await onToggleVerification(elephant.id, newStatus);
-    showToast(`${elephant.name} Verification badge ${newStatus ? 'සක්‍රිය කෙරිණි (Verified)' : 'අක්‍රිය කෙරිණි (Unverified)'}`);
+    try {
+      await onToggleVerification(elephant.id, newStatus);
+      showToast(`${elephant.name} Verification badge ${newStatus ? 'සක්‍රිය කෙරිණි (Verified)' : 'අක්‍රිය කෙරිණි (Unverified)'}`);
+    } catch (err: any) {
+      console.error('Error toggling verification:', err);
+      showError(`Verification update failed: ${err.message || err}`);
+    }
   };
 
   // Quick Featured Toggle
   const handleQuickFeatured = async (elephant: Elephant) => {
     if (!elephant.id) return;
     const newStatus = !elephant.isFeatured;
-    await onToggleFeatured(elephant.id, newStatus);
-    showToast(`${elephant.name} Featured Story ${newStatus ? 'එක් කරන ලදී (Featured)' : 'ඉවත් කරන ලදී'}`);
+    try {
+      await onToggleFeatured(elephant.id, newStatus);
+      showToast(`${elephant.name} Featured Story ${newStatus ? 'එක් කරන ලදී (Featured)' : 'ඉවත් කරන ලදී'}`);
+    } catch (err: any) {
+      console.error('Error toggling featured:', err);
+      showError(`Featured update failed: ${err.message || err}`);
+    }
   };
 
   // Quick Live Toggle
   const handleQuickLive = async (elephant: Elephant) => {
     if (!elephant.id) return;
     const newStatus = !elephant.isLive;
-    await onToggleLive(elephant.id, newStatus);
-    showToast(`${elephant.name} LIVE Status ${newStatus ? 'සක්‍රියයි (LIVE)' : 'අක්‍රියයි'}`);
+    try {
+      await onToggleLive(elephant.id, newStatus);
+      showToast(`${elephant.name} LIVE Status ${newStatus ? 'සක්‍රියයි (LIVE)' : 'අක්‍රියයි'}`);
+    } catch (err: any) {
+      console.error('Error toggling live status:', err);
+      showError(`LIVE status update failed: ${err.message || err}`);
+    }
   };
 
   // Trigger Cascade Delete Confirmation Modal
@@ -787,7 +824,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     } catch (err: any) {
       console.error('Error cascading deleting elephant:', err);
       const isOffline = err?.code === 'unavailable' || /offline/i.test(err?.message || '');
-      alert(
+      showError(
         isOffline
           ? 'දත්ත ඉවත් කිරීමට Firestore සම්බන්ධතාවය අසාර්ථක විය. ඔබගේ අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කර නැවත උත්සාහ කරන්න. (Could not reach the database - please check your internet connection and try again.)'
           : `දත්ත ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`
@@ -799,30 +836,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Moderate / Delete Single Community Post
   const handleDeletePost = async (postId: string) => {
-    if (confirm('ඔබට මෙම පරිශීලක පළකිරීම/Story එක database එකෙන් ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) {
+    requestConfirm('ඔබට මෙම පරිශීලක පළකිරීම/Story එක database එකෙන් ස්ථිරවම මකා දැමීමට අවශ්‍යද?', async () => {
       try {
         await deleteElephantPost(postId);
         setCommunityPosts((prev) => prev.filter((p) => p.id !== postId));
         showToast('පළකිරීම සාර්ථකව මකා දමන ලදී.');
       } catch (err: any) {
-        alert(`Error deleting post: ${err.message || err}`);
+        showError(`Error deleting post: ${err.message || err}`);
       }
-    }
+    });
   };
 
   // Reset all follow and like counts to 0 in Firestore
   const handleResetMetrics = async () => {
-    if (confirm('ඔබට සියලුම අලි ඇතුන්ගේ Follow count සහ Posts වල Like count 0 කිරීමට අවශ්‍ය බව ස්ථිරද? (Are you sure you want to reset all Follow & Like counts to 0?)')) {
+    requestConfirm('ඔබට සියලුම අලි ඇතුන්ගේ Follow count සහ Posts වල Like count 0 කිරීමට අවශ්‍ය බව ස්ථිරද? (Are you sure you want to reset all Follow & Like counts to 0?)', async () => {
       try {
         setIsResettingMetrics(true);
         const { elephantsReset, postsReset } = await resetAllCountsInFirestore();
         showToast(`සාර්ථකව 0 කරන ලදී! අලි ඇතුන් ${elephantsReset}ක් සහ පළකිරීම් ${postsReset}ක් යාවත්කාලීන විය.`);
       } catch (err: any) {
-        alert(`Error resetting metrics: ${err.message || err}`);
+        showError(`Error resetting metrics: ${err.message || err}`);
       } finally {
         setIsResettingMetrics(false);
       }
-    }
+    });
   };
 
   // Photo handlers & Gallery Uploader
@@ -851,7 +888,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       showToast(`ඡායාරූප ${fileArray.length} ක් Gallery එකෙන් එක් කරන ලදී!`);
     } catch (err: any) {
       console.error('Gallery upload error:', err);
-      alert('ඡායාරූපය upload කිරීමේදී දෝෂයක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      showError('ඡායාරූපය upload කිරීමේදී දෝෂයක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
     } finally {
       setIsUploadingGallery(false);
       if (galleryInputRef.current) {
@@ -963,7 +1000,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       showToast('කවරයේ පින්තූරය සාර්ථකව සම්පීඩනය කර (Compressed) සම්බන්ධ කරන ලදී!');
     } catch (err: any) {
       console.error('Event cover compression notice:', err);
-      alert('පින්තූරය සකස් කිරීමේදී ගැටලුවක් ඇතිවිය.');
+      showError('පින්තූරය සකස් කිරීමේදී ගැටලුවක් ඇතිවිය.');
     } finally {
       setIsCompressingEventCover(false);
       if (eventCoverInputRef.current) {
@@ -975,7 +1012,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSubmitEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eventFormData.title.trim()) {
-      alert('Event title is required.');
+      showError('Event title is required.');
       return;
     }
     const parsedElephants = eventElephantsText.split(',').map((s) => s.trim()).filter(Boolean);
@@ -1201,6 +1238,57 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {/* Error Banner (replaces window.alert so failures are always visible) */}
+      {errorMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-lg bg-red-600 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-start gap-2.5 text-xs font-bold animate-fadeIn border border-red-400/40">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span className="flex-1 leading-relaxed">{errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="flex-shrink-0 p-0.5 hover:bg-white/20 rounded-md transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Generic Confirmation Modal (replaces window.confirm so it always renders) */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[65] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-5 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-extrabold text-[#062E22] leading-snug">
+                {confirmDialog.message}
+              </h3>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await action();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer"
+              >
+                තහවුරු කරන්න (Confirm)
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3604,7 +3692,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   disabled={isSavingCloudinary}
                   onClick={async () => {
                     if (cloudinaryEnabled && (!cloudinaryCloudName || !cloudinaryUploadPreset)) {
-                      alert('Cloud Name සහ Upload Preset ඇතුළත් කිරීම අනිවාර්ය වේ.');
+                      showError('Cloud Name සහ Upload Preset ඇතුළත් කිරීම අනිවාර්ය වේ.');
                       return;
                     }
                     try {
@@ -3616,7 +3704,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       });
                       showToast('Cloudinary සැකසුම් සාර්ථකව සුරකින ලදී!');
                     } catch (err: any) {
-                      alert(`Error saving Cloudinary config: ${err.message || err}`);
+                      showError(`Error saving Cloudinary config: ${err.message || err}`);
                     } finally {
                       setIsSavingCloudinary(false);
                     }
