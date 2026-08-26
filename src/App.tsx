@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Elephant, CulturalEvent, ElephantPost } from './types/elephant';
-import { INITIAL_VERIFIED_ELEPHANTS } from './data/initialVerifiedData';
-import { INITIAL_POSTS } from './data/initialPosts';
 import {
   getElephants,
   addElephant,
@@ -11,13 +9,11 @@ import {
   toggleElephantVerification,
   toggleElephantFeatured,
   toggleElephantLive,
-  seedInitialVerifiedData,
   getCulturalEvents,
   addCulturalEvent,
   updateCulturalEvent,
   deleteCulturalEvent,
   saveElephantsBatch,
-  INITIAL_EVENTS
 } from './firebase/elephantService';
 import { getAllElephantPosts } from './firebase/postService';
 import { Navbar } from './components/Navbar';
@@ -65,15 +61,17 @@ const getNotificationTypeStyles = (type: string) => {
 };
 
 export default function App() {
+  // Real database data only. LocalStorage is used purely as an offline cache of the
+  // last real Firestore snapshot - it is never seeded with placeholder/demo data.
   const [elephants, setElephants] = useState<Elephant[]>(() => {
     try {
       const cached = localStorage.getItem('alimedia_cached_elephants');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-    return INITIAL_VERIFIED_ELEPHANTS;
+    return [];
   });
 
   const [events, setEvents] = useState<CulturalEvent[]>(() => {
@@ -81,27 +79,21 @@ export default function App() {
       const cached = localStorage.getItem('alimedia_cached_events');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-    return INITIAL_EVENTS;
+    return [];
   });
 
   const [posts, setPosts] = useState<ElephantPost[]>(() => {
     try {
-      const resetDone = localStorage.getItem('alimedia_likes_zero_reset');
-      if (!resetDone) {
-        localStorage.removeItem('alimedia_cached_posts');
-        localStorage.setItem('alimedia_likes_zero_reset', 'true');
-        return INITIAL_POSTS;
-      }
       const cached = localStorage.getItem('alimedia_cached_posts');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-    return INITIAL_POSTS;
+    return [];
   });
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -118,7 +110,6 @@ export default function App() {
   const [isCreatePostStoryOnly, setIsCreatePostStoryOnly] = useState<boolean>(false);
   const [hasNewNotifications, setHasNewNotifications] = useState<boolean>(false);
 
-  const [isSeeding, setIsSeeding] = useState<boolean>(false);
 
   // Auto-select English language by default, with localStorage persistence
   const [language, setLanguage] = useState<Language>(() => {
@@ -262,12 +253,12 @@ export default function App() {
           followerCount: data.followerCount || 0,
         });
       });
-      if (list.length > 0) {
-        setElephants(list);
-        try {
-          localStorage.setItem('alimedia_cached_elephants', JSON.stringify(list));
-        } catch {}
-      }
+      // Always mirror exactly what's in Firestore, including an empty registry -
+      // never keep showing stale/cached elephants once the database changes.
+      setElephants(list);
+      try {
+        localStorage.setItem('alimedia_cached_elephants', JSON.stringify(list));
+      } catch {}
     }, (err) => {
       console.warn('Real-time elephants subscription notice:', err);
     });
@@ -344,7 +335,7 @@ export default function App() {
         return timeB - timeA;
       });
 
-      if (list.length > 0) {
+      {
         setEvents(list);
         try {
           localStorage.setItem('alimedia_cached_events', JSON.stringify(list));
@@ -642,19 +633,6 @@ export default function App() {
     setEvents(freshEvents);
   };
 
-  // Seed database manually
-  const handleSeedDatabase = async () => {
-    setIsSeeding(true);
-    try {
-      await seedInitialVerifiedData();
-      showNotification('සත්‍යාපිත හීලෑ අලි වාර්තා සාර්ථකව ඇතුළත් කෙරිණි!');
-    } catch (err: any) {
-      alert(`Error: ${err.message || err}`);
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white flex flex-col font-sans antialiased selection:bg-emerald-900 transition-colors">
       {/* Toast Notification */}
@@ -863,7 +841,6 @@ export default function App() {
           onToggleLive={handleToggleLive}
           onSaveEvent={handleSaveEvent}
           onDeleteEvent={handleDeleteEvent}
-          onSeedDatabase={handleSeedDatabase}
           onViewElephant={(el) => {
             setIsAdminOpen(false);
             handleSelectElephant(el);

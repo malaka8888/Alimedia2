@@ -17,7 +17,6 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { ElephantPost } from '../types/elephant';
-import { INITIAL_POSTS } from '../data/initialPosts';
 import { sanitizeForFirestore } from './elephantService';
 
 const POSTS_COLLECTION = 'elephant_posts';
@@ -207,9 +206,9 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       return validPosts;
     })();
 
-    const posts = await withTimeout(fetchPromise, 15000, [] as ElephantPost[]);
+    const posts = await withTimeout(fetchPromise, 15000, null as ElephantPost[] | null);
 
-    if (posts && posts.length > 0) {
+    if (posts !== null) {
       try {
         localStorage.setItem(CACHE_POSTS_KEY, JSON.stringify(posts));
       } catch (e) {}
@@ -220,25 +219,25 @@ export async function getAllElephantPosts(): Promise<ElephantPost[]> {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed.filter((p: any) => !p.isStoryOnly || isWithin24Hours(p.createdAt));
         }
       }
     } catch (e) {}
 
-    return INITIAL_POSTS;
+    return [];
   } catch (error) {
     console.warn('Error fetching all elephant posts:', error);
     try {
       const cached = localStorage.getItem(CACHE_POSTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed.filter((p: any) => !p.isStoryOnly || isWithin24Hours(p.createdAt));
         }
       }
     } catch (e) {}
-    return INITIAL_POSTS;
+    return [];
   }
 }
 
@@ -286,11 +285,46 @@ export async function getPostsForElephant(elephantId: string): Promise<ElephantP
 }
 
 /**
- * Delete a community post or expired story
+ * Delete a community post or expired story.
+ *
+ * When a post's photo was earlier merged into the parent elephant's public
+ * gallery (see addElephantPost), deleting only the post document left that
+ * photo permanently stuck on the elephant profile with no way to remove it.
+ * This now also strips the photo from the elephant document so the image is
+ * actually gone everywhere once an admin deletes it.
  */
 export async function deleteElephantPost(postId: string): Promise<void> {
   try {
     const docRef = doc(db, POSTS_COLLECTION, postId);
+
+    // Look up the post first so we know which photo (if any) to clean up.
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.elephantId && data.photoUrl && !data.isStoryOnly) {
+          const elephantRef = doc(db, ELEPHANTS_COLLECTION, data.elephantId);
+          const elephantSnap = await getDoc(elephantRef);
+          if (elephantSnap.exists()) {
+            const elephantData = elephantSnap.data();
+            const cloudinaryPhotos = Array.isArray(elephantData.cloudinaryPhotos)
+              ? elephantData.cloudinaryPhotos.filter((cp: any) => cp?.url !== data.photoUrl)
+              : undefined;
+            const update: Record<string, any> = {
+              photos: arrayRemove(data.photoUrl),
+              updatedAt: serverTimestamp(),
+            };
+            if (cloudinaryPhotos) {
+              update.cloudinaryPhotos = cloudinaryPhotos;
+            }
+            await updateDoc(elephantRef, update);
+          }
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('Could not clean up elephant gallery photo for deleted post:', cleanupErr);
+    }
+
     await deleteDoc(docRef);
   } catch (error) {
     console.error('Error deleting elephant post:', error);

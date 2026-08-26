@@ -205,14 +205,13 @@ interface AdminPanelProps {
   onToggleLive: (id: string, isLive: boolean) => Promise<void>;
   onSaveEvent: (event: Omit<CulturalEvent, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>;
   onDeleteEvent: (id: string) => Promise<void>;
-  onSeedDatabase: () => Promise<void>;
   onViewElephant: (elephant: Elephant) => void;
   onClose: () => void;
   language: Language;
 }
 
-const DEFAULT_ADMIN_EMAIL = 'admin@alimedia.com';
-const DEFAULT_ADMIN_PASS = 'admin@alimedia';
+const DEFAULT_ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || 'admin@alimedia.com';
+const DEFAULT_ADMIN_PASS = (import.meta as any).env?.VITE_ADMIN_PASSWORD || 'admin@alimedia';
 
 const POPULAR_PERAHERAS = [
   'Kandy Esala Perahera (මහනුවර ඇසළ පෙරහැර)',
@@ -268,8 +267,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('alimedia_admin_auth') === 'true';
   });
-  const [emailInput, setEmailInput] = useState<string>('admin@alimedia.com');
-  const [passwordInput, setPasswordInput] = useState<string>('admin@alimedia');
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Visitors & Reset Metrics State
@@ -611,11 +610,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     if (!formData.name.trim()) {
       alert('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
-      return;
-    }
-
-    if (photoSelections.length === 0) {
-      alert('කරුණාකර අවම වශයෙන් එක් ඡායාරූපයක්වත් තෝරන්න. (Please select at least one photo.)');
       return;
     }
 
@@ -1173,18 +1167,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 className="w-full px-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none shadow-2xs"
               />
-            </div>
-
-            {/* Quick Demo Credentials helper */}
-            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-950 space-y-1">
-              <div className="font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Default Admin Credentials:</span>
-              </div>
-              <p className="text-[11px] font-mono">
-                Username: <b>admin@alimedia.com</b> <br />
-                Password: <b>admin@alimedia</b>
-              </p>
             </div>
 
             <button
@@ -3518,32 +3500,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Seed Verified Data */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                <span>සත්‍යාපිත මූලික දත්ත ඇතුළත් කිරීම (Seed Verified Elephants)</span>
-              </h3>
-              <p className="text-xs text-zinc-500 font-medium">
-                ශ්‍රී ලංකාවේ ප්‍රමුඛ දළ ඇතුන් (ඉන්දිරාජා, මියන් කුමාර, වාසනා, කණ්ඩුල ඇතුළු) සත්‍යාපිත දත්ත ගොනුව ක්ෂණිකව Firestore වෙත seed කරන්න.
-              </p>
-
-              <button
-                onClick={async () => {
-                  if (confirm('සත්‍යාපිත මූලික දත්ත Database එකට එක් කිරීමට ඔබට අවශ්‍යද?')) {
-                    setIsSeeding(true);
-                    await onSeedDatabase();
-                    setIsSeeding(false);
-                    showToast('මූලික දත්ත සාර්ථකව Firestore වෙත ඇතුළත් කෙරිණි!');
-                  }
-                }}
-                disabled={isSeeding}
-                className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
-              >
-                {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
-                <span>{isSeeding ? 'දත්ත Seed වෙමින් පවතී...' : 'Seed Verified Elephant Registry'}</span>
-              </button>
-            </div>
           </div>
         )}
 

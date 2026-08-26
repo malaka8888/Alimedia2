@@ -42,7 +42,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onOpenAuthModal,
 }) => {
   const t = translations[language];
-  const { user, profile, loginWithGoogle, isFollowing, toggleFollowElephant } = useAuth();
+  const { user, profile, signInWithGoogle, isFollowing, toggleFollowElephant } = useAuth();
 
   const [selectedElephantId, setSelectedElephantId] = useState<string>(preselectedElephantId || '');
   const [elephantSearch, setElephantSearch] = useState<string>('');
@@ -481,7 +481,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={loginWithGoogle}
+                  onClick={signInWithGoogle}
                   className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 shadow-2xs hover:bg-zinc-50"
                 >
                   <LogIn className="w-3 h-3" />

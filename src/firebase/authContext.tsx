@@ -57,27 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('Error fetching user profile:', e);
         }
       } else {
-        // Fallback check for mock Google Sign-In profile in localStorage
-        const savedMock = localStorage.getItem('alimedia_user_mock');
-        if (savedMock) {
-          try {
-            const parsed = JSON.parse(savedMock);
-            const userProf = await syncUserProfile({
-              uid: parsed.uid,
-              email: parsed.email,
-              displayName: parsed.displayName,
-              photoURL: parsed.photoURL,
-            });
-            setProfile(userProf);
-            setLocalFollows(userProf.followedElephants || []);
-            localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
-          } catch (e) {
-            console.error('Error parsing/syncing fallback mock profile:', e);
-            setProfile(null);
-          }
-        } else {
-          setProfile(null);
-        }
+        setProfile(null);
       }
       setLoading(false);
     });
@@ -103,49 +83,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.warn('Google sign-in error or cancelled:', err);
-      // If unauthorized domain (e.g. netlify domain not added yet) or popup blocked, provide helpful fallback
-      if (
-        err.code === 'auth/unauthorized-domain' ||
-        err.code === 'auth/popup-blocked' ||
-        err.code === 'auth/popup-closed-by-user' ||
-        err.code === 'auth/operation-not-allowed' ||
-        err.code === 'auth/cancelled-popup-request'
-      ) {
-        const defaultEmail = 'malakafernando21@gmail.com';
-        const emailPrompt = prompt(
-          err.code === 'auth/unauthorized-domain'
-            ? 'Firebase Domain Note: මෙම domain එක Firebase Authorized Domains වලට add වන තුරු Quick Sign-in භාවිතා කළ හැක.\n\nEnter your Email:'
-            : 'Google Sign-in: Please enter your email (e.g. malaka@gmail.com):',
-          defaultEmail
-        );
-        if (emailPrompt) {
-          const namePrompt = prompt('Enter your Display Name:', 'Malaka Fernando') || 'Malaka Fernando';
-          const mockUid = `google_${emailPrompt.replace(/[^a-zA-Z0-9]/g, '_')}`;
-          
-          // Sync mock profile with Firestore to ensure database persistence!
-          try {
-            const mockProfile: UserProfile = {
-              uid: mockUid,
-              email: emailPrompt,
-              displayName: namePrompt,
-              username: `@${emailPrompt.split('@')[0]}`,
-              photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(namePrompt)}&backgroundColor=062E22,0B4A37`,
-              bio: 'Sri Lankan Domesticated Elephants & Tuskers Enthusiast 🐘',
-              followedElephants: [],
-            };
-            
-            const userProf = await syncUserProfile(mockProfile);
-            setProfile(userProf);
-            setLocalFollows(userProf.followedElephants || []);
-            localStorage.setItem('alimedia_user_mock', JSON.stringify(mockProfile));
-            localStorage.setItem('alimedia_followed_elephants', JSON.stringify(userProf.followedElephants || []));
-          } catch (syncErr) {
-            console.error('Error syncing mock profile with Firestore:', syncErr);
-          }
-        }
-      } else {
-        throw err;
+      // Surface a clear, actionable message instead of silently creating an
+      // unverified account for whatever email the visitor happens to type in.
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        // User dismissed the popup themselves - nothing to report.
+        return;
       }
+      if (err.code === 'auth/unauthorized-domain') {
+        alert(
+          'This domain is not yet authorized for Google Sign-In in the Firebase console. Please add it under Authentication > Settings > Authorized domains.'
+        );
+        return;
+      }
+      if (err.code === 'auth/popup-blocked') {
+        alert('Your browser blocked the sign-in popup. Please allow popups for this site and try again.');
+        return;
+      }
+      throw err;
     }
   };
 

@@ -16,7 +16,6 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
-import { INITIAL_VERIFIED_ELEPHANTS } from '../data/initialVerifiedData';
 import { uploadPhotoToCloudinary } from './cloudinaryService';
 
 const ELEPHANTS_COLLECTION = 'elephants';
@@ -42,45 +41,6 @@ function withTimeoutReject<T>(promise: Promise<T>, timeoutMs = 15000, errorMsg =
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), timeoutMs))
   ]);
 }
-
-/**
- * Initial default cultural events / perahera updates
- */
-export const INITIAL_EVENTS: CulturalEvent[] = [
-  {
-    id: "kandy-esala-2024",
-    title: "Kandy Esala Perahera 2024 (මහනුවර ඇසළ මහා පෙරහැර)",
-    sinhalaTitle: "මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය",
-    description: "The Grand Pageant of Sri Lanka carrying the sacred tooth relic casket. Chief ceremonial tuskers leading the Maligawa procession.",
-    location: "Kandy (මහනුවර)",
-    date: "August 10 - 20, 2024",
-    type: "perahera",
-    participatingElephants: ["Indiraja", "Myan Kumara", "Vasana"],
-    isActive: true
-  },
-  {
-    id: "kelaniya-duruthu-2025",
-    title: "Kelaniya Duruthu Maha Perahera (කැලණිය දුරුතු පෙරහැර)",
-    sinhalaTitle: "කැලණිය රජ මහා විහාර දුරුතු මහා පෙරහැර",
-    description: "Historic annual religious pageant celebrating the Buddha's visit to Kelaniya Raja Maha Vihara.",
-    location: "Kelaniya, Colombo",
-    date: "January 2025",
-    type: "perahera",
-    participatingElephants: ["Kandula"],
-    isActive: true
-  },
-  {
-    id: "bellanwila-esala-2024",
-    title: "Bellanwila Esala Perahera (බෙල්ලන්විල ඇසළ පෙරහැර)",
-    sinhalaTitle: "බෙල්ලන්විල රජ මහා විහාර ඇසළ පෙරහැර",
-    description: "Traditional Colombo cultural festival with leading domesticated tuskers and elephants.",
-    location: "Bellanwila, Colombo",
-    date: "September 2024",
-    type: "perahera",
-    participatingElephants: ["Abhaya"],
-    isActive: true
-  }
-];
 
 // Sanitizer helper to completely strip 'undefined' properties for Firestore SDK compatibility
 export function sanitizeForFirestore(obj: any): any {
@@ -176,39 +136,41 @@ export async function getElephants(): Promise<Elephant[]> {
       return list;
     })();
 
-    const list = await withTimeout(fetchPromise, 10000, [] as Elephant[]);
+    const list = await withTimeout(fetchPromise, 10000, null as Elephant[] | null);
 
-    if (list && list.length > 0) {
+    // A real (possibly empty) response from Firestore is authoritative - reflect it as-is.
+    if (list !== null) {
       try {
         localStorage.setItem(CACHE_ELEPHANTS_KEY, JSON.stringify(list));
       } catch (e) {}
       return list;
     }
 
-    // Check cached data if Firestore returned empty or timed out
+    // Only reached on a network timeout - fall back to the last known real snapshot,
+    // never to placeholder/demo data.
     try {
       const cached = localStorage.getItem(CACHE_ELEPHANTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch (e) {}
 
-    return INITIAL_VERIFIED_ELEPHANTS;
+    return [];
   } catch (error) {
-    console.warn('Firestore elephant query fallback active:', error);
+    console.warn('Error fetching elephants from Firestore:', error);
     try {
       const cached = localStorage.getItem(CACHE_ELEPHANTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch (e) {}
-    return INITIAL_VERIFIED_ELEPHANTS;
+    return [];
   }
 }
 
@@ -692,73 +654,6 @@ export async function deleteElephantCascade(elephantId: string): Promise<{
   }
 }
 
-/**
- * Seed initial verified Sri Lankan domesticated elephants into Firestore
- */
-export async function seedInitialVerifiedData(): Promise<number> {
-  try {
-    // 1. Delete all existing elephants to make it fully clean and clear
-    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
-    const elephantSnap = await getDocs(elephantsCol);
-    const deleteEleBatch = writeBatch(db);
-    elephantSnap.forEach((docSnap) => {
-      deleteEleBatch.delete(docSnap.ref);
-    });
-    await deleteEleBatch.commit();
-    
-    // 2. Delete all existing cultural events
-    const eventsCol = collection(db, EVENTS_COLLECTION);
-    const eventSnap = await getDocs(eventsCol);
-    const deleteEventBatch = writeBatch(db);
-    eventSnap.forEach((docSnap) => {
-      deleteEventBatch.delete(docSnap.ref);
-    });
-    await deleteEventBatch.commit();
-
-    // 3. Delete all existing community posts to keep it completely clean
-    const postsCol = collection(db, POSTS_COLLECTION);
-    const postSnap = await getDocs(postsCol);
-    const deletePostBatch = writeBatch(db);
-    postSnap.forEach((docSnap) => {
-      deletePostBatch.delete(docSnap.ref);
-    });
-    await deletePostBatch.commit();
-
-    // Now seed fresh records with stable IDs
-    let count = 0;
-    // We can write elephants in batches to be super fast and robust
-    const seedBatch = writeBatch(db);
-    
-    for (const elephant of INITIAL_VERIFIED_ELEPHANTS) {
-      const { id, ...data } = elephant;
-      const docRef = doc(db, ELEPHANTS_COLLECTION, id || `ele_${count}`);
-      seedBatch.set(docRef, {
-        ...data,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      count++;
-    }
-
-    // Also seed default cultural events with their defined IDs
-    for (const ev of INITIAL_EVENTS) {
-      const { id, ...data } = ev;
-      const docRef = doc(db, EVENTS_COLLECTION, id || `ev_${count}`);
-      seedBatch.set(docRef, {
-        ...data,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
-
-    await seedBatch.commit();
-    return count;
-  } catch (error) {
-    console.error('Error seeding verified elephant records:', error);
-    throw error;
-  }
-}
-
 // -------------------------------------------------------------
 // Cultural Events Service
 // -------------------------------------------------------------
@@ -791,9 +686,9 @@ export async function getCulturalEvents(): Promise<CulturalEvent[]> {
       return events;
     })();
 
-    const events = await withTimeout(fetchPromise, 2000, [] as CulturalEvent[]);
+    const events = await withTimeout(fetchPromise, 2000, null as CulturalEvent[] | null);
 
-    if (events && events.length > 0) {
+    if (events !== null) {
       try {
         localStorage.setItem(CACHE_EVENTS_KEY, JSON.stringify(events));
       } catch (e) {}
@@ -804,25 +699,25 @@ export async function getCulturalEvents(): Promise<CulturalEvent[]> {
       const cached = localStorage.getItem(CACHE_EVENTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch (e) {}
 
-    return INITIAL_EVENTS;
+    return [];
   } catch (error) {
-    console.warn('Error fetching events, returning defaults:', error);
+    console.warn('Error fetching cultural events:', error);
     try {
       const cached = localStorage.getItem(CACHE_EVENTS_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch (e) {}
-    return INITIAL_EVENTS;
+    return [];
   }
 }
 
