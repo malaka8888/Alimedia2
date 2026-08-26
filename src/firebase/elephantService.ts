@@ -42,6 +42,37 @@ function withTimeoutReject<T>(promise: Promise<T>, timeoutMs = 15000, errorMsg =
   ]);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry a Firestore read a few times before giving up. This exists because the SDK
+ * can throw "Failed to get document because the client is offline" transiently -
+ * e.g. right after page load, before its realtime channel has finished connecting,
+ * even though the network is actually fine a moment later. Without this, actions
+ * like "delete elephant" could fail immediately on a read that would have
+ * succeeded on the very next try.
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 800): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const isOfflineErr =
+        err?.code === 'unavailable' ||
+        /offline/i.test(err?.message || '');
+      if (!isOfflineErr || i === attempts - 1) {
+        throw err;
+      }
+      await delay(delayMs * (i + 1));
+    }
+  }
+  throw lastError;
+}
+
 // Sanitizer helper to completely strip 'undefined' properties for Firestore SDK compatibility
 export function sanitizeForFirestore(obj: any): any {
   if (obj === null || obj === undefined) {
@@ -535,12 +566,22 @@ export async function deleteElephantCascade(elephantId: string): Promise<{
   eventsUpdated: number;
 }> {
   try {
-    // 1. Fetch elephant document to retrieve names for reference matching
+    // 1. Fetch elephant document to retrieve names for reference matching.
+    // This is only used for best-effort legacy name matching below (step 4) -
+    // it must never block the actual deletion, so a failure here (including a
+    // transient "client is offline" read error) is logged and skipped rather
+    // than aborting the whole cascade delete.
     const elephantRef = doc(db, ELEPHANTS_COLLECTION, elephantId);
-    const elephantSnap = await getDoc(elephantRef);
-    const elephantData = elephantSnap.exists() ? elephantSnap.data() : null;
-    const elephantName = elephantData?.name || '';
-    const elephantSinhalaName = elephantData?.sinhalaName || '';
+    let elephantName = '';
+    let elephantSinhalaName = '';
+    try {
+      const elephantSnap = await withRetry(() => getDoc(elephantRef));
+      const elephantData = elephantSnap.exists() ? elephantSnap.data() : null;
+      elephantName = elephantData?.name || '';
+      elephantSinhalaName = elephantData?.sinhalaName || '';
+    } catch (lookupErr) {
+      console.warn(`Could not read elephant ${elephantId} before delete (continuing anyway):`, lookupErr);
+    }
 
     // 2. Cascade delete all community posts and stories for this elephant
     let postsDeletedCount = 0;
@@ -640,7 +681,7 @@ export async function deleteElephantCascade(elephantId: string): Promise<{
     }
 
     // 5. Delete the main elephant document from Firestore
-    await deleteDoc(elephantRef);
+    await withRetry(() => deleteDoc(elephantRef));
 
     return {
       deletedElephantName: elephantName || elephantId,

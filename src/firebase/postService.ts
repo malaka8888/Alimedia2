@@ -97,6 +97,33 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 10000, fallback: T): Pr
   ]);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry a Firestore operation a few times before giving up. The SDK can throw
+ * "Failed to get document because the client is offline" transiently (e.g.
+ * right after page load, before its realtime channel finishes connecting)
+ * even when the network is actually fine a moment later.
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 800): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const isOfflineErr = err?.code === 'unavailable' || /offline/i.test(err?.message || '');
+      if (!isOfflineErr || i === attempts - 1) {
+        throw err;
+      }
+      await delay(delayMs * (i + 1));
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Clean up expired story-only posts (> 24 hours) from Firestore
  */
@@ -299,12 +326,12 @@ export async function deleteElephantPost(postId: string): Promise<void> {
 
     // Look up the post first so we know which photo (if any) to clean up.
     try {
-      const snap = await getDoc(docRef);
+      const snap = await withRetry(() => getDoc(docRef));
       if (snap.exists()) {
         const data = snap.data();
         if (data.elephantId && data.photoUrl && !data.isStoryOnly) {
           const elephantRef = doc(db, ELEPHANTS_COLLECTION, data.elephantId);
-          const elephantSnap = await getDoc(elephantRef);
+          const elephantSnap = await withRetry(() => getDoc(elephantRef));
           if (elephantSnap.exists()) {
             const elephantData = elephantSnap.data();
             const cloudinaryPhotos = Array.isArray(elephantData.cloudinaryPhotos)
@@ -317,7 +344,7 @@ export async function deleteElephantPost(postId: string): Promise<void> {
             if (cloudinaryPhotos) {
               update.cloudinaryPhotos = cloudinaryPhotos;
             }
-            await updateDoc(elephantRef, update);
+            await withRetry(() => updateDoc(elephantRef, update));
           }
         }
       }
@@ -325,7 +352,7 @@ export async function deleteElephantPost(postId: string): Promise<void> {
       console.warn('Could not clean up elephant gallery photo for deleted post:', cleanupErr);
     }
 
-    await deleteDoc(docRef);
+    await withRetry(() => deleteDoc(docRef));
   } catch (error) {
     console.error('Error deleting elephant post:', error);
     throw error;

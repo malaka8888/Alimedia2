@@ -782,7 +782,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       await loadCommunityPosts();
     } catch (err: any) {
       console.error('Error cascading deleting elephant:', err);
-      alert(`දත්ත ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
+      const isOffline = err?.code === 'unavailable' || /offline/i.test(err?.message || '');
+      alert(
+        isOffline
+          ? 'දත්ත ඉවත් කිරීමට Firestore සම්බන්ධතාවය අසාර්ථක විය. ඔබගේ අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කර නැවත උත්සාහ කරන්න. (Could not reach the database - please check your internet connection and try again.)'
+          : `දත්ත ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`
+      );
     } finally {
       setIsDeletingCascade(false);
     }
