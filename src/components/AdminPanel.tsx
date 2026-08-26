@@ -1150,79 +1150,100 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // -------------------------------------------------------------
   if (!isAuthenticated) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#062E22]/90 backdrop-blur-md flex items-center justify-center p-4">
-        <div className="bg-[#FAF9F5] w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border border-zinc-200 text-[#062E22] space-y-6 animate-fadeIn">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-white border border-zinc-200 p-1 flex items-center justify-center shadow-md">
-                <img
-                  src={LOGO_URL}
-                  alt="අලි Media Logo"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight">අලි Media Admin</h2>
-                <p className="text-xs text-zinc-500 font-medium">පාලක මණ්ඩල ප්‍රවේශය (Full Control)</p>
-              </div>
-            </div>
+      <div className="fixed inset-0 z-50 bg-ink-950 flex items-center justify-center p-4 overflow-y-auto">
+        {/* Ambient registry texture */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(245,230,188,0.5) 28px)',
+          }}
+        />
+        <div className="pointer-events-none absolute -top-32 -left-24 w-96 h-96 rounded-full bg-gold-700/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -right-16 w-96 h-96 rounded-full bg-pine-700/25 blur-3xl" />
+
+        <div className="relative w-full max-w-md animate-fadeIn">
+          <div className="bg-parchment-100 w-full rounded-2xl p-7 sm:p-9 shadow-2xl border border-gold-800/20 text-ink-900">
+            {/* Close */}
             <button
               onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-zinc-700 rounded-full hover:bg-zinc-200 transition-colors"
+              className="absolute -top-3 -right-3 w-9 h-9 rounded-full bg-ink-900 text-parchment-100 hover:bg-ink-800 flex items-center justify-center shadow-lg transition-colors cursor-pointer"
+              aria-label="Close"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
+
+            {/* Seal + Identity */}
+            <div className="flex flex-col items-center text-center gap-3 mb-7">
+              <div className="w-16 h-16 rounded-full registry-seal p-[3px] flex items-center justify-center">
+                <div className="w-full h-full rounded-full bg-parchment-50 p-1.5 flex items-center justify-center overflow-hidden">
+                  <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold-700">Field Registry</p>
+                <h2 className="font-display text-2xl font-semibold tracking-tight text-ink-900 mt-1">
+                  අලි Media Admin
+                </h2>
+                <p className="text-xs text-ink-400 font-medium mt-1">පාලක මණ්ඩල ප්‍රවේශය · Restricted Access</p>
+              </div>
+            </div>
+
+            <div className="ledger-rule text-gold-800/30 mb-6" />
+
+            {/* Error Alert */}
+            {authError && (
+              <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-xs font-bold text-red-700 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.15em] flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-gold-600" />
+                  <span>Admin Username / Email</span>
+                </label>
+                <input
+                  type="text"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="admin@alimedia.com"
+                  required
+                  className="w-full px-4 py-3 bg-parchment-50 border border-gold-800/20 rounded-lg text-sm font-medium text-ink-900 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 focus:outline-none transition-shadow"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.15em] flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-gold-600" />
+                  <span>Password (මුරපදය)</span>
+                </label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="••••••••••••"
+                  required
+                  className="w-full px-4 py-3 bg-parchment-50 border border-gold-800/20 rounded-lg text-sm font-medium text-ink-900 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 focus:outline-none transition-shadow"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-ink-900 hover:bg-ink-800 text-parchment-50 rounded-lg text-sm font-bold tracking-wide shadow-lg shadow-ink-950/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4 text-gold-400" />
+                <span>Enter Console (ප්‍රවේශ වන්න)</span>
+              </button>
+            </form>
+
+            <p className="text-center text-[10px] text-ink-400/70 font-medium mt-6 tracking-wide">
+              Sri Lankan Domesticated Elephant &amp; Tusker Registry
+            </p>
           </div>
-
-          {/* Error Alert */}
-          {authError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs font-bold text-red-700 animate-fadeIn">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Admin Username / Email</span>
-              </label>
-              <input
-                type="text"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="admin@alimedia.com"
-                required
-                className="w-full px-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none shadow-2xs"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Password (මුරපදය)</span>
-              </label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••••••"
-                required
-                className="w-full px-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none shadow-2xs"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3.5 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-sm font-extrabold shadow-lg shadow-emerald-950/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Login to Admin Console (ප්‍රවේශ වන්න)</span>
-            </button>
-          </form>
         </div>
       </div>
     );
@@ -1232,11 +1253,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // VIEW: Authenticated Full Admin Dashboard
   // -------------------------------------------------------------
   return (
-    <div className="fixed inset-0 z-50 bg-[#F7F8F4] overflow-y-auto flex flex-col text-[#062E22] animate-fadeIn pb-16 sm:pb-8">
+    <div className="fixed inset-0 z-50 bg-parchment-200 flex flex-col sm:flex-row text-ink-900 animate-fadeIn">
       {/* Toast feedback */}
       {statusMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#062E22] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-emerald-500/30">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#12231B] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-pine-500/30">
+          <CheckCircle2 className="w-4 h-4 text-pine-400" />
           <span>{statusMessage}</span>
         </div>
       )}
@@ -1249,7 +1270,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="flex-shrink-0 p-0.5 hover:bg-white/20 rounded-md transition-colors"
+            className="flex-shrink-0 p-0.5 hover:bg-parchment-50/20 rounded-md transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1259,12 +1280,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Generic Confirmation Modal (replaces window.confirm so it always renders) */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[65] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-5 animate-scaleUp">
+          <div className="bg-parchment-50 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-5 animate-scaleUp">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-11 h-11 rounded-2xl bg-gold-100 text-gold-600 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <h3 className="text-sm font-extrabold text-[#062E22] leading-snug">
+              <h3 className="font-display text-sm font-extrabold text-[#12231B] leading-snug">
                 {confirmDialog.message}
               </h3>
             </div>
@@ -1295,13 +1316,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Cascading Deletion Confirmation Modal */}
       {deletingElephantTarget && (
         <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
+          <div className="bg-parchment-50 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-red-950">
+                <h3 className="font-display text-lg font-black text-red-950">
                   ස්ථිර මකා දැමීම (Cascade Delete)
                 </h3>
                 <p className="text-xs text-red-700 font-medium">
@@ -1380,13 +1401,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Remove User Confirmation Modal */}
       {deletingUserTarget && (
         <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
+          <div className="bg-parchment-50 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-red-950">
+                <h3 className="font-display text-lg font-black text-red-950">
                   පරිශීලකයා ඉවත් කරන්න (Remove User)
                 </h3>
                 <p className="text-xs text-red-700 font-medium">
@@ -1470,177 +1491,282 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Admin Top Header (Mobile Optimized) */}
-      <header className="sticky top-0 z-40 bg-[#FAF9F5] border-b border-zinc-200/80 px-3 sm:px-6 py-2.5 sm:py-3 shadow-2xs">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
-          {/* Logo & Identity */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-zinc-200 p-0.5 flex items-center justify-center shadow-md flex-shrink-0">
-              <img
-                src={LOGO_URL}
-                alt="අලි Media Logo"
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-black text-sm sm:text-base tracking-tight text-[#062E22] truncate">
-                  Admin <span className="text-emerald-600">Console</span>
-                </h1>
-                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 uppercase">
-                  Super Admin
-                </span>
-              </div>
-              <p className="text-[10px] text-zinc-500 font-mono truncate hidden sm:block">
-                {DEFAULT_ADMIN_EMAIL}
-              </p>
+      {/* -------------------------------------------------------- */}
+      {/* DESKTOP SIDEBAR (Registry Navigation)                     */}
+      {/* -------------------------------------------------------- */}
+      <aside className="hidden sm:flex sm:flex-col sm:w-64 sm:h-screen sm:sticky sm:top-0 bg-ink-950 text-parchment-100 flex-shrink-0">
+        {/* Seal & Identity */}
+        <div className="px-5 pt-6 pb-5 flex items-center gap-3 border-b border-white/10">
+          <div className="w-11 h-11 rounded-full registry-seal p-[2.5px] flex items-center justify-center flex-shrink-0">
+            <div className="w-full h-full rounded-full bg-parchment-50 p-1 flex items-center justify-center overflow-hidden">
+              <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
             </div>
           </div>
+          <div className="min-w-0">
+            <h1 className="font-display text-base font-semibold tracking-tight text-parchment-50 truncate">
+              Admin Console
+            </h1>
+            <p className="text-[10px] text-gold-400 font-bold uppercase tracking-[0.15em] truncate">Super Admin</p>
+          </div>
+        </div>
 
-          {/* Top Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+        {/* Nav groups */}
+        <nav className="flex-1 overflow-y-auto admin-scroll px-3 py-4 space-y-5">
+          <div className="space-y-1">
+            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Dashboard</p>
             <button
-              onClick={onClose}
-              className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-[#062E22] shadow-2xs transition-colors cursor-pointer"
+              onClick={() => setAdminTab('overview')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
+                adminTab === 'overview'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
             >
-              <Eye className="w-3.5 h-3.5 text-emerald-700" />
-              <span className="hidden sm:inline">View Website</span>
-              <span className="sm:hidden">Exit</span>
-            </button>
-
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-bold text-red-700 transition-colors cursor-pointer"
-              title="Logout"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
+              <LayoutDashboard className="w-4 h-4" />
+              <span>සාරාංශය (Overview)</span>
             </button>
           </div>
+
+          <div className="space-y-1">
+            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Registry</p>
+            <button
+              onClick={() => setAdminTab('elephants')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                adminTab === 'elephants'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <span className="flex items-center gap-2.5"><Crown className="w-4 h-4" /><span>අලි නාමාවලිය</span></span>
+              <span className="text-[10px] opacity-70">{elephants.length}</span>
+            </button>
+            <button
+              onClick={handleOpenCreateForm}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
+                adminTab === 'editor'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-pine-300 hover:bg-parchment-50/5'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>{editingId ? 'සංස්කරණය (Edit)' : 'නව අලියෙකු (Add Profile)'}</span>
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Community</p>
+            <button
+              onClick={() => setAdminTab('posts')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                adminTab === 'posts'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <span className="flex items-center gap-2.5"><MessageSquare className="w-4 h-4" /><span>පළකිරීම් & Stories</span></span>
+              <span className="text-[10px] opacity-70">{communityPosts.length}</span>
+            </button>
+            <button
+              onClick={() => setAdminTab('events')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                adminTab === 'events'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <span className="flex items-center gap-2.5"><Calendar className="w-4 h-4" /><span>පෙරහැර වැඩසටහන්</span></span>
+              <span className="text-[10px] opacity-70">{events.length}</span>
+            </button>
+            <button
+              onClick={() => setAdminTab('users')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                adminTab === 'users'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <span className="flex items-center gap-2.5"><Users className="w-4 h-4" /><span>පරිශීලකයින්</span></span>
+              <span className="text-[10px] opacity-70">{registeredUsers.length}</span>
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Tools</p>
+            <button
+              onClick={() => setAdminTab('bulk_import')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
+                adminTab === 'bulk_import'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Bulk Import</span>
+            </button>
+            <button
+              onClick={() => setAdminTab('database')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
+                adminTab === 'database'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              <span>Backup & DB</span>
+            </button>
+            <button
+              onClick={() => setAdminTab('cloudinary')}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
+                adminTab === 'cloudinary'
+                  ? 'bg-gold-500 text-ink-950 shadow-sm'
+                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
+              }`}
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Cloudinary</span>
+            </button>
+          </div>
+        </nav>
+
+        {/* Sidebar footer actions */}
+        <div className="px-3 py-4 border-t border-white/10 space-y-1.5">
+          <p className="px-2.5 text-[10px] text-parchment-100/40 font-mono truncate mb-1">{DEFAULT_ADMIN_EMAIL}</p>
+          <button
+            onClick={onClose}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold text-parchment-100/80 hover:bg-parchment-50/5 transition-colors cursor-pointer"
+          >
+            <Eye className="w-4 h-4 text-pine-300" />
+            <span>View Website</span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* -------------------------------------------------------- */}
+      {/* MOBILE TOP BAR                                            */}
+      {/* -------------------------------------------------------- */}
+      <header className="sm:hidden sticky top-0 z-40 bg-ink-950 text-parchment-100 px-3 py-2.5 shadow-lg flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-full registry-seal p-[2px] flex items-center justify-center flex-shrink-0">
+            <div className="w-full h-full rounded-full bg-parchment-50 p-0.5 flex items-center justify-center overflow-hidden">
+              <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
+            </div>
+          </div>
+          <h1 className="font-display text-sm font-semibold tracking-tight truncate">Admin Console</h1>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg bg-parchment-50/10 hover:bg-parchment-50/15 text-parchment-100 transition-colors cursor-pointer"
+            title="View Website"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-300 transition-colors cursor-pointer"
+            title="Logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      {/* Categorized Navigation Bar (Responsive Scrollable Tabs) */}
-      <div className="bg-white border-b border-zinc-200/90 sticky top-[49px] sm:top-[57px] z-30 shadow-xs px-3 sm:px-6">
-        <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-2.5 no-scrollbar scroll-smooth">
-          {/* Overview */}
+      {/* MOBILE SCROLLABLE TAB STRIP */}
+      <div className="sm:hidden sticky top-[49px] z-30 bg-parchment-100 border-b border-gold-800/15 shadow-sm px-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-2 no-scrollbar scroll-smooth">
           <button
             onClick={() => setAdminTab('overview')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'overview'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'overview' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>සාරාංශය (Overview)</span>
+            <span>Overview</span>
           </button>
-
-          {/* Elephants List */}
           <button
             onClick={() => setAdminTab('elephants')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'elephants'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'elephants' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <Crown className="w-3.5 h-3.5" />
-            <span>අලි නාමාවලිය ({elephants.length})</span>
+            <span>අලි ({elephants.length})</span>
           </button>
-
-          {/* New / Edit Profile */}
           <button
             onClick={handleOpenCreateForm}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'editor'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-emerald-700 text-white hover:bg-emerald-800'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'editor' ? 'bg-ink-950 text-parchment-50' : 'bg-gold-500 text-ink-950'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>{editingId ? 'සංස්කරණය (Edit)' : '+ නව අලියෙකු (Add Profile)'}</span>
+            <span>{editingId ? 'Edit' : 'Add'}</span>
           </button>
-
-          {/* Community Posts & Stories */}
           <button
             onClick={() => setAdminTab('posts')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'posts'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'posts' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>පළකිරීම් & Stories ({communityPosts.length})</span>
+            <span>Posts ({communityPosts.length})</span>
           </button>
-
-          {/* Cultural Events */}
           <button
             onClick={() => setAdminTab('events')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'events'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'events' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>පෙරහැර වැඩසටහන් ({events.length})</span>
+            <span>Events ({events.length})</span>
           </button>
-
-          {/* Registered Users */}
           <button
             onClick={() => setAdminTab('users')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'users'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'users' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>පරිශීලකයින් (Users) ({registeredUsers.length})</span>
+            <span>Users ({registeredUsers.length})</span>
           </button>
-
-          {/* Bulk Import */}
           <button
             onClick={() => setAdminTab('bulk_import')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'bulk_import'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-amber-500 hover:bg-amber-600 text-zinc-950 shadow-xs'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'bulk_import' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Bulk Import (Excel/CSV)</span>
+            <span>Import</span>
           </button>
-
-          {/* Database & Tools */}
           <button
             onClick={() => setAdminTab('database')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'database'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'database' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            <span>පද්ධති උපස්ථ (Backup & DB)</span>
+            <span>Backup</span>
           </button>
-
-          {/* Cloudinary Settings */}
           <button
             onClick={() => setAdminTab('cloudinary')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'cloudinary'
-                ? 'bg-[#062E22] text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              adminTab === 'cloudinary' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
             }`}
           >
             <UploadCloud className="w-3.5 h-3.5" />
-            <span>Cloudinary සැකසුම්</span>
+            <span>Cloudinary</span>
           </button>
         </div>
       </div>
+
+      {/* Content column wrapper */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto admin-scroll">
 
       {/* Main Admin Content Container */}
       <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 space-y-6 flex-1">
@@ -1651,35 +1777,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="space-y-6 animate-fadeIn">
             {/* Quick Metrics */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 sm:gap-3">
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
                 <div className="text-[10px] font-extrabold text-zinc-400 uppercase">Total Elephants</div>
-                <div className="text-2xl font-black text-[#062E22] mt-1">{elephants.length}</div>
-                <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">ලියාපදිංචි අලි</div>
+                <div className="text-2xl font-black text-[#12231B] mt-1">{elephants.length}</div>
+                <div className="text-[10px] text-pine-700 font-semibold mt-0.5">ලියාපදිංචි අලි</div>
               </div>
 
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-amber-600 uppercase flex items-center gap-1">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-gold-600 uppercase flex items-center gap-1">
                   <Crown className="w-3 h-3" />
                   <span>Tuskers</span>
                 </div>
-                <div className="text-2xl font-black text-amber-900 mt-1">
+                <div className="text-2xl font-black text-gold-900 mt-1">
                   {elephants.filter((e) => e.type === 'tusker').length}
                 </div>
                 <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">දළ ඇතුන්</div>
               </div>
 
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-emerald-600 uppercase flex items-center gap-1">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+                <div className="text-[10px] font-extrabold text-pine-600 uppercase flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
                   <span>Verified</span>
                 </div>
-                <div className="text-2xl font-black text-emerald-900 mt-1">
+                <div className="text-2xl font-black text-pine-900 mt-1">
                   {elephants.filter((e) => e.verified).length}
                 </div>
                 <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">සත්‍යාපිත ලාංඡන</div>
               </div>
 
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
                 <div className="text-[10px] font-extrabold text-purple-600 uppercase flex items-center gap-1">
                   <Star className="w-3 h-3" />
                   <span>Featured</span>
@@ -1690,7 +1816,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">Stories Spotlight</div>
               </div>
 
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
                 <div className="text-[10px] font-extrabold text-blue-600 uppercase flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
                   <span>Posts & Stories</span>
@@ -1701,7 +1827,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පරිශීලක පළකිරීම්</div>
               </div>
 
-              <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
                 <div className="text-[10px] font-extrabold text-rose-600 uppercase flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
                   <span>Events</span>
@@ -1712,7 +1838,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <div
                 onClick={() => setAdminTab('users')}
-                className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs cursor-pointer hover:border-emerald-300 transition-colors"
+                className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs cursor-pointer hover:border-pine-300 transition-colors"
               >
                 <div className="text-[10px] font-extrabold text-teal-600 uppercase flex items-center gap-1">
                   <Users className="w-3 h-3" />
@@ -1727,30 +1853,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 onClick={handleOpenCreateForm}
-                className="p-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+                className="p-4 bg-pine-700 hover:bg-pine-800 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
               >
                 <div>
                   <h4 className="font-extrabold text-sm flex items-center gap-2">
                     <Plus className="w-4 h-4" />
                     <span>නව අලියෙකු ලියාපදිංචි කරන්න</span>
                   </h4>
-                  <p className="text-xs text-emerald-100 mt-1">
+                  <p className="text-xs text-pine-100 mt-1">
                     ඡායාරූප, ඇත් දළ විස්තර, පෙරහැර සහභාගීත්ව සටහන් එක් කරන්න.
                   </p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-emerald-200 group-hover:translate-x-1 transition-transform" />
+                <ChevronRight className="w-5 h-5 text-pine-200 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
                 onClick={() => setAdminTab('bulk_import')}
-                className="p-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+                className="p-4 bg-gold-500 hover:bg-gold-600 text-zinc-950 rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
               >
                 <div>
                   <h4 className="font-extrabold text-sm flex items-center gap-2">
                     <FileSpreadsheet className="w-4 h-4" />
                     <span>Excel / CSV තොග ඇතුළත් කිරීම</span>
                   </h4>
-                  <p className="text-xs text-amber-950/80 mt-1">
+                  <p className="text-xs text-gold-950/80 mt-1">
                     අලි ඇතුන් 100+ ක් එකවර ක්ෂණිකව upload කරන්න.
                   </p>
                 </div>
@@ -1759,7 +1885,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <button
                 onClick={() => setAdminTab('posts')}
-                className="p-4 bg-[#062E22] hover:bg-emerald-950 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
+                className="p-4 bg-[#12231B] hover:bg-pine-950 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
               >
                 <div>
                   <h4 className="font-extrabold text-sm flex items-center gap-2">
@@ -1775,13 +1901,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Real-time Website Activity & Active Duration Tracking */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-4">
                 <div>
-                  <h3 className="font-black text-base text-[#062E22] flex items-center gap-2">
+                  <h3 className="font-display font-black text-base text-[#12231B] flex items-center gap-2">
                     <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pine-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-pine-500"></span>
                     </span>
                     <span>සජීවී වෙබ් අඩවි පරිශීලකයින් (Real-time Website Traffic)</span>
                   </h3>
@@ -1807,17 +1933,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* Traffic Summary Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg">
+                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-pine-100 flex items-center justify-center text-pine-800 font-black text-lg">
                     {visitors.filter((v) => isVisitorOnline(v.lastActive)).length}
                   </div>
                   <div>
                     <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Active Now</div>
-                    <div className="text-xs font-bold text-emerald-950">දැනට ක්‍රියාකාරී පිරිස</div>
+                    <div className="text-xs font-bold text-pine-950">දැනට ක්‍රියාකාරී පිරිස</div>
                   </div>
                 </div>
 
-                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-800 font-black text-lg">
                     {visitors.length}
                   </div>
@@ -1827,8 +1953,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-[#FAF9F5] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 font-black text-sm">
+                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gold-100 flex items-center justify-center text-gold-800 font-black text-sm">
                     {(() => {
                       const activeOnes = visitors.filter((v) => isVisitorOnline(v.lastActive));
                       if (activeOnes.length === 0) return '0s';
@@ -1843,7 +1969,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <div>
                     <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Avg. Session Time</div>
-                    <div className="text-xs font-bold text-amber-950">සාමාන්‍ය රැඳී සිටි කාලය</div>
+                    <div className="text-xs font-bold text-gold-950">සාමාන්‍ය රැඳී සිටි කාලය</div>
                   </div>
                 </div>
               </div>
@@ -1876,15 +2002,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         return (
                           <div
                             key={visitor.id}
-                            className="px-4 py-3 flex items-center justify-between hover:bg-emerald-50/20 transition-colors text-xs"
+                            className="px-4 py-3 flex items-center justify-between hover:bg-pine-50/20 transition-colors text-xs"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${online ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300'}`} />
+                              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${online ? 'bg-pine-500 animate-pulse' : 'bg-zinc-300'}`} />
                               <div className="min-w-0">
-                                <div className="font-extrabold text-[#062E22] truncate flex items-center gap-1.5">
+                                <div className="font-extrabold text-[#12231B] truncate flex items-center gap-1.5">
                                   <span>{visitor.displayName}</span>
                                   {visitor.email !== 'Guest' && (
-                                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-mono">
+                                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-pine-50 text-pine-800 border border-pine-200/60 font-mono">
                                       Gmail Connected
                                     </span>
                                   )}
@@ -1910,10 +2036,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Recent Elephants Quick Peek */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-black text-base text-[#062E22]">
+                  <h3 className="font-display font-black text-base text-[#12231B]">
                     අලුත්ම අලි පැතිකඩ (Recent Profiles)
                   </h3>
                   <p className="text-xs text-zinc-500 font-medium">
@@ -1922,7 +2048,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 <button
                   onClick={() => setAdminTab('elephants')}
-                  className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
+                  className="text-xs font-extrabold text-pine-700 hover:underline flex items-center gap-1"
                 >
                   <span>සියල්ල බලන්න (View All)</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -1933,7 +2059,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {elephants.slice(0, 6).map((el) => (
                   <div
                     key={el.id}
-                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 flex items-center justify-between gap-3 hover:bg-emerald-50/40 transition-colors"
+                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 flex items-center justify-between gap-3 hover:bg-pine-50/40 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
@@ -1942,9 +2068,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         className="w-11 h-11 rounded-xl object-cover border border-zinc-200 flex-shrink-0"
                       />
                       <div className="min-w-0">
-                        <div className="font-bold text-xs text-[#062E22] truncate flex items-center gap-1">
+                        <div className="font-bold text-xs text-[#12231B] truncate flex items-center gap-1">
                           <span>{el.name}</span>
-                          {el.verified && <ShieldCheck className="w-3 h-3 text-emerald-600" />}
+                          {el.verified && <ShieldCheck className="w-3 h-3 text-pine-600" />}
                         </div>
                         <p className="text-[11px] text-zinc-500 font-sinhala truncate">
                           {el.sinhalaName || el.organization || 'Sri Lanka'}
@@ -1954,14 +2080,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => handleOpenEditForm(el)}
-                        className="p-1.5 text-zinc-500 hover:text-emerald-700 rounded-lg hover:bg-white transition-colors"
+                        className="p-1.5 text-zinc-500 hover:text-pine-700 rounded-lg hover:bg-parchment-50 transition-colors"
                         title="Edit"
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleTriggerCascadeDelete(el)}
-                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-white transition-colors"
+                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-parchment-50 transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1980,7 +2106,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'elephants' && (
           <div className="space-y-4 animate-fadeIn">
             {/* Search and Filters Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -1988,7 +2114,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="නම, ස්ථානය හෝ විහාරය සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                 />
               </div>
 
@@ -2009,7 +2135,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onClick={() => setFilterType(f.id as any)}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
                       filterType === f.id
-                        ? 'bg-[#062E22] text-white'
+                        ? 'bg-[#12231B] text-white'
                         : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                     }`}
                   >
@@ -2022,7 +2148,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Mobile View: Responsive Elephant Cards */}
             <div className="block lg:hidden space-y-3">
               {filteredElephants.length === 0 ? (
-                <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs">
+                <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs">
                   කිසිදු හීලෑ අලියෙකු හමු නොවීය.
                 </div>
               ) : (
@@ -2033,7 +2159,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   return (
                     <div
                       key={el.id}
-                      className="bg-white rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
+                      className="bg-parchment-50 rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
                     >
                       {/* Top Row: Photo + Name + Type */}
                       <div className="flex items-center gap-3">
@@ -2044,22 +2170,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <h4 className="font-extrabold text-sm text-[#062E22] truncate">
+                            <h4 className="font-extrabold text-sm text-[#12231B] truncate">
                               {el.name}
                             </h4>
                             {el.verified && (
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600/20" />
+                              <ShieldCheck className="w-3.5 h-3.5 text-pine-600 fill-pine-600/20" />
                             )}
                           </div>
                           {el.sinhalaName && (
-                            <p className="text-xs text-emerald-800 font-sinhala truncate">
+                            <p className="text-xs text-pine-800 font-sinhala truncate">
                               {el.sinhalaName}
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                isTusker ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
+                                isTusker ? 'bg-gold-100 text-gold-900' : 'bg-pine-100 text-pine-900'
                               }`}
                             >
                               {isTusker ? 'Tusker (ඇතා)' : 'Elephant (අලියා)'}
@@ -2078,7 +2204,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           onClick={() => handleQuickVerify(el)}
                           className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                             el.verified
-                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                              ? 'bg-pine-100 text-pine-900 border border-pine-300'
                               : 'bg-zinc-100 text-zinc-500'
                           }`}
                         >
@@ -2124,7 +2250,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </button>
                         <button
                           onClick={() => handleOpenEditForm(el)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5"
+                          className="flex-1 py-2 px-3 rounded-xl bg-pine-50 hover:bg-pine-100 text-xs font-bold text-pine-800 flex items-center justify-center gap-1.5"
                         >
                           <Edit className="w-3.5 h-3.5" />
                           <span>Edit</span>
@@ -2144,10 +2270,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Desktop View: High-density Table */}
-            <div className="hidden lg:block bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
+            <div className="hidden lg:block bg-parchment-50 rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#FAF9F5] border-b border-zinc-200 text-zinc-500 font-extrabold uppercase tracking-wider">
+                  <thead className="bg-[#FBF6E8] border-b border-zinc-200 text-zinc-500 font-extrabold uppercase tracking-wider">
                     <tr>
                       <th className="py-3.5 px-4">Elephant Profile</th>
                       <th className="py-3.5 px-3">Type & Age</th>
@@ -2183,14 +2309,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="font-extrabold text-sm text-[#062E22] truncate flex items-center gap-1.5">
+                                  <div className="font-extrabold text-sm text-[#12231B] truncate flex items-center gap-1.5">
                                     <span>{elephant.name}</span>
                                     {elephant.verified && (
-                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600/20" />
+                                      <ShieldCheck className="w-3.5 h-3.5 text-pine-600 fill-pine-600/20" />
                                     )}
                                   </div>
                                   {elephant.sinhalaName && (
-                                    <p className="text-[11px] text-emerald-800 font-sinhala truncate">
+                                    <p className="text-[11px] text-pine-800 font-sinhala truncate">
                                       {elephant.sinhalaName}
                                     </p>
                                   )}
@@ -2203,7 +2329,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <div className="space-y-1">
                                 <span
                                   className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    isTusker ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
+                                    isTusker ? 'bg-gold-100 text-gold-900' : 'bg-pine-100 text-pine-900'
                                   }`}
                                 >
                                   {isTusker ? 'Tusker (ඇතා)' : 'Elephant (අලියා)'}
@@ -2230,7 +2356,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 onClick={() => handleQuickVerify(elephant)}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
                                   elephant.verified
-                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200'
+                                    ? 'bg-pine-100 text-pine-900 border border-pine-300 hover:bg-pine-200'
                                     : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
                                 }`}
                               >
@@ -2281,7 +2407,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 <button
                                   onClick={() => handleOpenEditForm(elephant)}
-                                  className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1.5 text-pine-700 hover:text-pine-900 hover:bg-pine-50 rounded-lg transition-colors cursor-pointer"
                                   title="Edit Elephant"
                                 >
                                   <Edit className="w-4 h-4" />
@@ -2311,10 +2437,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* ============================================================= */}
         {adminTab === 'editor' && (
           <form onSubmit={handleSubmitElephant} className="space-y-6 animate-fadeIn pb-12">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-parchment-50 p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-2xs">
               <div>
-                <h3 className="text-base sm:text-lg font-black text-[#062E22] flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-500" />
+                <h3 className="font-display text-base sm:text-lg font-black text-[#12231B] flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-gold-500" />
                   <span>
                     {editingId ? `සංස්කරණය: ${formData.name || 'Elephant'}` : 'නව හීලෑ අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
                   </span>
@@ -2335,7 +2461,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 sm:flex-initial px-5 py-2 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-initial px-5 py-2 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   {isSaving ? (
                     <>
@@ -2353,9 +2479,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Section 1: Basic Identity */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <User className="w-4 h-4 text-emerald-700" />
+                <User className="w-4 h-4 text-pine-700" />
                 <span>1. මූලික අනන්‍යතාව (Basic Identity & Profile Badges)</span>
               </h4>
 
@@ -2371,7 +2497,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g. Indiraja / Kandula"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2385,7 +2511,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.sinhalaName || ''}
                     onChange={(e) => setFormData({ ...formData, sinhalaName: e.target.value })}
                     placeholder="e.g. ඉන්දිරාජා"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none font-sinhala"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none font-sinhala"
                   />
                 </div>
 
@@ -2395,7 +2521,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <select
                     value={formData.type}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value as ElephantType })}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   >
                     <option value="tusker">Tusker (ඇතා - දළ සහිත)</option>
                     <option value="elephant">Elephant (අලියා / ඇලියා)</option>
@@ -2408,7 +2534,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <select
                     value={formData.gender}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value as Gender })}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   >
                     <option value="male">Male (පිරිමි)</option>
                     <option value="female">Female (ගැහැණු / ඇතින්න)</option>
@@ -2423,7 +2549,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.age || ''}
                     onChange={(e) => setFormData({ ...formData, age: e.target.value })}
                     placeholder="e.g. 45 or 40-45"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2433,7 +2559,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <select
                     value={formData.status || 'living'}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   >
                     <option value="living">Living (ජීවත්වන)</option>
                     <option value="memorial">Memorial (අභාවප්‍රාප්ත / අනුස්මරණ)</option>
@@ -2448,7 +2574,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.customBadge || ''}
                     onChange={(e) => setFormData({ ...formData, customBadge: e.target.value })}
                     placeholder="e.g. National Treasure / මංගල හස්තිරාජයා"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2460,16 +2586,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={otherNamesText}
                     onChange={(e) => setOtherNamesText(e.target.value)}
                     placeholder="e.g. Maligawa Indiraja, Raja, Baby"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* Section 2: Guardianship & Physical Characteristics */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-emerald-700" />
+                <Building2 className="w-4 h-4 text-pine-700" />
                 <span>2. භාරකාරත්වය හා දේහ ලක්ෂණ (Guardianship & Physical Attributes)</span>
               </h4>
 
@@ -2484,7 +2610,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.organization}
                     onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
                     placeholder="e.g. Sri Dalada Maligawa (ශ්‍රී දළදා මාළිගාව)"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2496,7 +2622,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.location}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     placeholder="e.g. Kandy / මහනුවර"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2508,7 +2634,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.mahout || ''}
                     onChange={(e) => setFormData({ ...formData, mahout: e.target.value })}
                     placeholder="e.g. K. G. Sunil / අනුර මහතා"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2520,7 +2646,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.tusks || ''}
                     onChange={(e) => setFormData({ ...formData, tusks: e.target.value })}
                     placeholder="e.g. දිගු සවිමත් යුගල දළ (Twin symmetrical curved tusks)"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2534,7 +2660,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.physicalCharacteristics || ''}
                     onChange={(e) => setFormData({ ...formData, physicalCharacteristics: e.target.value })}
                     placeholder="e.g. උස අඩි 9.5, තේජවන්ත පෙනුම, පුළුල් කුම්භස්ථලය, සමමිතික පිටිකොන්ද"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
 
@@ -2548,16 +2674,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="හීලෑ අලියාගේ ඓතිහාසික පසුබිම, පෙරහැර මංගල්‍යයන්හි ධාතු කරඬුව වැඩමවීම, පුදසත්කාර සහ සංස්කෘතික වටිනාකම..."
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* Section 3: Perahera Participation */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-emerald-700" />
+                <Calendar className="w-4 h-4 text-pine-700" />
                 <span>3. පෙරහැර සහභාගීත්වය (Perahera Participation Checklist)</span>
               </h4>
 
@@ -2587,7 +2713,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         }}
                         className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-emerald-800 text-white shadow-xs'
+                            ? 'bg-pine-800 text-white shadow-xs'
                             : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                         }`}
                       >
@@ -2607,17 +2733,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={peraheraText}
                   onChange={(e) => setPeraheraText(e.target.value)}
                   placeholder="Kandy Esala Perahera, Kelaniya Duruthu Perahera..."
-                  className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                 />
               </div>
             </div>
 
             {/* Section 4: Rebuilt Photo Gallery & Streamlined Concurrent Uploader */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-emerald-700" />
+                    <ImageIcon className="w-4 h-4 text-pine-700" />
                     <span>4. ඡායාරූප ගැලරිය (Photo Gallery & Parallel Uploads)*</span>
                   </h4>
                   <p className="text-[11px] text-zinc-500 font-medium">
@@ -2649,7 +2775,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   />
                   <label
                     htmlFor="admin-photo-picker"
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                    className="px-4 py-2 bg-pine-700 hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Camera className="w-3.5 h-3.5" />
                     <span>Select Device Photos</span>
@@ -2692,7 +2818,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           ? 'border-red-300 bg-red-50'
                           : photo.status === 'success'
                           ? 'border-zinc-200 bg-zinc-50'
-                          : 'border-amber-300 bg-amber-50 animate-pulse'
+                          : 'border-gold-300 bg-gold-50 animate-pulse'
                       }`}
                     >
                       {/* Image Preview */}
@@ -2709,17 +2835,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <span className="text-zinc-300">Pending Upload</span>
                           )}
                           {photo.status === 'compressing' && (
-                            <span className="text-amber-300 flex items-center gap-1">
+                            <span className="text-gold-300 flex items-center gap-1">
                               <Loader2 className="w-3 h-3 animate-spin" /> Compressing...
                             </span>
                           )}
                           {photo.status === 'uploading' && (
-                            <span className="text-emerald-300 flex items-center gap-1">
+                            <span className="text-pine-300 flex items-center gap-1">
                               <Loader2 className="w-3 h-3 animate-spin" /> Uploading...
                             </span>
                           )}
                           {photo.status === 'success' && (
-                            <span className="text-emerald-400 flex items-center gap-1">
+                            <span className="text-pine-400 flex items-center gap-1">
                               ✓ Safe (Cloudinary)
                             </span>
                           )}
@@ -2731,7 +2857,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {/* Cover Photo Indicator */}
                       {idx === 0 && (
-                        <span className="absolute top-2 left-2 bg-emerald-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
+                        <span className="absolute top-2 left-2 bg-pine-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
                           COVER PHOTO
                         </span>
                       )}
@@ -2748,7 +2874,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 return [target, ...next];
                               });
                             }}
-                            className="px-2.5 py-1 bg-white text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-emerald-50 cursor-pointer"
+                            className="px-2.5 py-1 bg-parchment-50 text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-pine-50 cursor-pointer"
                           >
                             Make Cover
                           </button>
@@ -2804,7 +2930,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   } : p));
                                 }
                               }}
-                              className="flex-1 py-1 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black rounded-md text-center cursor-pointer"
+                              className="flex-1 py-1 bg-gold-500 hover:bg-gold-600 text-zinc-950 font-black rounded-md text-center cursor-pointer"
                             >
                               Retry
                             </button>
@@ -2813,7 +2939,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               onClick={() => {
                                 setPhotoSelections(prev => prev.filter(p => p.id !== photo.id));
                               }}
-                              className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded-md font-bold cursor-pointer"
+                              className="px-2 py-1 bg-parchment-50/20 hover:bg-parchment-50/30 rounded-md font-bold cursor-pointer"
                             >
                               Dismiss
                             </button>
@@ -2827,10 +2953,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Section 5: Sources & Verified Documentation */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-emerald-700" />
+                  <FileText className="w-4 h-4 text-pine-700" />
                   <span>5. මූලාශ්‍ර සහ ලේඛන (Sources & References)</span>
                 </h4>
                 <button
@@ -2846,21 +2972,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {formData.sources.map((src, idx) => (
                   <div
                     key={idx}
-                    className="p-3 bg-[#FAF9F5] rounded-2xl border border-zinc-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center"
+                    className="p-3 bg-[#FBF6E8] rounded-2xl border border-zinc-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center"
                   >
                     <input
                       type="text"
                       placeholder="Source Title (e.g. Wildlife Dept Registry)"
                       value={src.title}
                       onChange={(e) => handleUpdateSource(idx, 'title', e.target.value)}
-                      className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                     <input
                       type="text"
                       placeholder="Publisher / Official Custodian"
                       value={src.publisher || ''}
                       onChange={(e) => handleUpdateSource(idx, 'publisher', e.target.value)}
-                      className="px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                     <div className="flex items-center gap-2">
                       <input
@@ -2868,7 +2994,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         placeholder="Year / Verified Date (e.g. 2024)"
                         value={src.verifiedDate || ''}
                         onChange={(e) => handleUpdateSource(idx, 'verifiedDate', e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                        className="flex-1 px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                       />
                       {formData.sources.length > 1 && (
                         <button
@@ -2886,7 +3012,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Sticky Mobile / Desktop Action Bar */}
-            <div className="sticky bottom-4 z-30 bg-[#062E22] text-white p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 border border-emerald-500/30 animate-fadeIn">
+            <div className="sticky bottom-4 z-30 bg-[#12231B] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-pine-500/30 animate-fadeIn">
               <div className="text-xs font-bold truncate">
                 {editingId ? `සංස්කරණය: ${formData.name}` : 'නව අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
               </div>
@@ -2894,14 +3020,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setAdminTab('elephants')}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-parchment-50/10 hover:bg-parchment-50/20 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   අවලංගු කරන්න
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-5 py-2 bg-pine-500 hover:bg-pine-400 text-zinc-950 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   <span>{editingId ? 'යාවත්කාලීන කරන්න' : 'සුරකින්න (Save)'}</span>
@@ -2917,7 +3043,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'posts' && (
           <div className="space-y-4 animate-fadeIn">
             {/* Header & Controls */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-4 rounded-2xl border border-zinc-200 shadow-2xs">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -2925,7 +3051,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={postsSearch}
                   onChange={(e) => setPostsSearch(e.target.value)}
                   placeholder="අලියාගේ නම, පරිශීලකයා සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                 />
               </div>
 
@@ -2934,7 +3060,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     onClick={() => setPostFilter('all')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'all' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                      postFilter === 'all' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
                     }`}
                   >
                     All ({communityPosts.length})
@@ -2942,7 +3068,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     onClick={() => setPostFilter('stories')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'stories' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                      postFilter === 'stories' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
                     }`}
                   >
                     Stories Only
@@ -2950,7 +3076,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     onClick={() => setPostFilter('feed')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'feed' ? 'bg-[#062E22] text-white' : 'text-zinc-600'
+                      postFilter === 'feed' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
                     }`}
                   >
                     Feed Posts
@@ -2971,11 +3097,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Posts Grid */}
             {isLoadingPosts ? (
               <div className="p-12 text-center text-zinc-400 flex flex-col items-center justify-center gap-2">
-                <Loader2 className="w-6 h-6 animate-spin text-emerald-700" />
+                <Loader2 className="w-6 h-6 animate-spin text-pine-700" />
                 <span className="text-xs font-medium">පරිශීලක පළකිරීම් load වෙමින් පවතී...</span>
               </div>
             ) : filteredCommunityPosts.length === 0 ? (
-              <div className="bg-white rounded-3xl p-12 text-center border border-zinc-200 text-zinc-400 text-xs">
+              <div className="bg-parchment-50 rounded-2xl p-12 text-center border border-zinc-200 text-zinc-400 text-xs">
                 පළකිරීම් කිසිවක් හමු නොවීය.
               </div>
             ) : (
@@ -2983,7 +3109,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {filteredCommunityPosts.map((post) => (
                   <div
                     key={post.id}
-                    className="bg-white rounded-2xl overflow-hidden border border-zinc-200 shadow-2xs flex flex-col justify-between"
+                    className="bg-parchment-50 rounded-2xl overflow-hidden border border-zinc-200 shadow-2xs flex flex-col justify-between"
                   >
                     <div>
                       {/* Photo Thumbnail */}
@@ -2998,7 +3124,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             STORY ONLY
                           </span>
                         ) : post.isStory ? (
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-900/90 text-emerald-200 backdrop-blur-xs">
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-pine-900/90 text-pine-200 backdrop-blur-xs">
                             FEED + STORY
                           </span>
                         ) : (
@@ -3012,8 +3138,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="p-3.5 space-y-2">
                         {/* Target Elephant */}
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-emerald-800 flex items-center gap-1">
-                            <Crown className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="text-xs font-extrabold text-pine-800 flex items-center gap-1">
+                            <Crown className="w-3.5 h-3.5 text-gold-500" />
                             <span>{post.elephantName}</span>
                           </span>
                           <span className="text-[10px] text-zinc-400 flex items-center gap-1">
@@ -3078,9 +3204,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'events' && (
           <div className="space-y-6 animate-fadeIn">
             {/* Event Form */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-emerald-700" />
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-pine-700" />
                 <span>
                   {editingEventId ? 'පෙරහැර නිවේදනය සංස්කරණය' : 'නව පෙරහැර / සංස්කෘතික නිවේදනයක් පළ කිරීම'}
                 </span>
@@ -3096,7 +3222,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventFormData.title}
                       onChange={(e) => setEventFormData({ ...eventFormData, title: e.target.value })}
                       placeholder="e.g. Kandy Esala Perahera 2025"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
 
@@ -3107,7 +3233,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventFormData.sinhalaTitle || ''}
                       onChange={(e) => setEventFormData({ ...eventFormData, sinhalaTitle: e.target.value })}
                       placeholder="e.g. මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none font-sinhala"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none font-sinhala"
                     />
                   </div>
 
@@ -3116,7 +3242,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <select
                       value={eventFormData.type}
                       onChange={(e) => setEventFormData({ ...eventFormData, type: e.target.value as any })}
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     >
                       <option value="perahera">Perahera / Festival (පෙරහැර මංගල්‍ය)</option>
                       <option value="ceremony">Cultural Ceremony (සංස්කෘතික උත්සව)</option>
@@ -3136,7 +3262,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventFormData.date}
                       onChange={(e) => setEventFormData({ ...eventFormData, date: e.target.value })}
                       placeholder="e.g. August 10 - 20, 2025"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
 
@@ -3147,7 +3273,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventFormData.location}
                       onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
                       placeholder="e.g. Kandy / මහනුවර"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
 
@@ -3160,7 +3286,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventElephantsText}
                       onChange={(e) => setEventElephantsText(e.target.value)}
                       placeholder="Indiraja, Myan Kumara, Vasana, Kandula..."
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
 
@@ -3172,7 +3298,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         type="button"
                         disabled={isCompressingEventCover}
                         onClick={() => eventCoverInputRef.current?.click()}
-                        className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        className="px-4 py-2 bg-pine-50 hover:bg-pine-100 border border-pine-200 text-pine-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                       >
                         {isCompressingEventCover ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -3194,13 +3320,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           value={eventFormData.coverImage || ''}
                           onChange={(e) => setEventFormData({ ...eventFormData, coverImage: e.target.value })}
                           placeholder="Or paste direct image URL (නැතහොත් පින්තූරයේ URL එක මෙහි ඇතුලත් කරන්න)"
-                          className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                          className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                         />
                       </div>
                     </div>
 
                     {eventFormData.coverImage && (
-                      <div className="mt-2.5 relative inline-block rounded-2xl overflow-hidden border border-zinc-200 bg-[#FAF9F5] p-1.5">
+                      <div className="mt-2.5 relative inline-block rounded-2xl overflow-hidden border border-zinc-200 bg-[#FBF6E8] p-1.5">
                         <img
                           src={eventFormData.coverImage}
                           alt="Cover Preview"
@@ -3229,7 +3355,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={eventFormData.description}
                       onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
                       placeholder="පෙරහැර පිළිබඳ විශේෂ සටහන්, නව පුවත් හෝ යාවත්කාලීන කිරීම් පිළිබඳ සවිස්තරාත්මක තොරතුරු මෙහි ඇතුළත් කරන්න..."
-                      className="w-full px-3.5 py-2.5 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -3246,7 +3372,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   )}
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                    className="px-5 py-2.5 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Save className="w-4 h-4" />
                     <span>{editingEventId ? 'යාවත්කාලීන කරන්න' : 'නිවේදනය පළ කරන්න (Publish)'}</span>
@@ -3257,19 +3383,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* Events List */}
             <div className="space-y-3">
-              <h4 className="font-extrabold text-sm text-[#062E22]">
+              <h4 className="font-extrabold text-sm text-[#12231B]">
                 පළ කර ඇති පෙරහැර හා පොදු නිවේදන ({events.length})
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {events.map((ev) => (
                   <div
                     key={ev.id}
-                    className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden flex flex-col justify-between"
+                    className="bg-parchment-50 rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden flex flex-col justify-between"
                   >
                     <div>
                       {/* Notification Cover Image if exists */}
                       {ev.coverImage && (
-                        <div className="w-full h-32 bg-zinc-100 overflow-hidden border-b border-zinc-150">
+                        <div className="w-full h-32 bg-zinc-100 overflow-hidden border-b border-zinc-200">
                           <img
                             src={ev.coverImage}
                             alt={ev.title}
@@ -3281,9 +3407,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="p-4 space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <h5 className="font-extrabold text-sm text-[#062E22]">{ev.title}</h5>
+                            <h5 className="font-extrabold text-sm text-[#12231B]">{ev.title}</h5>
                             {ev.sinhalaTitle && (
-                              <p className="text-xs text-emerald-800 font-sinhala">{ev.sinhalaTitle}</p>
+                              <p className="text-xs text-pine-800 font-sinhala">{ev.sinhalaTitle}</p>
                             )}
                           </div>
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-250 shrink-0 uppercase tracking-wider">
@@ -3295,7 +3421,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           {ev.location && <div>📍 {ev.location}</div>}
                           {ev.date && <div>📅 {ev.date}</div>}
                           {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                            <div className="text-emerald-700 font-semibold truncate">
+                            <div className="text-pine-700 font-semibold truncate">
                               🐘 {ev.participatingElephants.join(', ')}
                             </div>
                           )}
@@ -3306,7 +3432,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleOpenEditEvent(ev)}
-                        className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-1 bg-pine-50 hover:bg-pine-100 text-pine-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Edit className="w-3 h-3" />
                         <span>Edit</span>
@@ -3332,7 +3458,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'users' && (
           <div className="space-y-4 animate-fadeIn">
             {/* Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -3340,7 +3466,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={usersSearch}
                   onChange={(e) => setUsersSearch(e.target.value)}
                   placeholder="නම, Username හෝ Email සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
                 />
               </div>
               <button
@@ -3354,12 +3480,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {isLoadingUsers ? (
-              <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs flex items-center justify-center gap-2">
+              <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Loading users...</span>
               </div>
             ) : filteredUsers.length === 0 ? (
-              <div className="bg-white p-8 text-center rounded-3xl border border-zinc-200 text-zinc-400 text-xs">
+              <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs">
                 කිසිදු ලියාපදිංචි පරිශීලකයෙකු හමු නොවීය.
               </div>
             ) : (
@@ -3369,7 +3495,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {filteredUsers.map((u) => (
                     <div
                       key={u.uid}
-                      className="bg-white rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
+                      className="bg-parchment-50 rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 border border-zinc-200 flex-shrink-0">
@@ -3380,7 +3506,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-extrabold text-sm text-[#062E22] truncate">{u.displayName}</h4>
+                          <h4 className="font-extrabold text-sm text-[#12231B] truncate">{u.displayName}</h4>
                           <p className="text-xs text-zinc-500 font-mono truncate">{u.username}</p>
                           <p className="text-[10px] text-zinc-400 truncate">{u.email || 'No email'}</p>
                         </div>
@@ -3402,7 +3528,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 {/* Desktop View: High-density Table */}
-                <div className="hidden lg:block bg-white rounded-3xl border border-zinc-200 shadow-2xs overflow-hidden">
+                <div className="hidden lg:block bg-parchment-50 rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-zinc-50 border-b border-zinc-200">
@@ -3431,7 +3557,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="font-extrabold text-sm text-[#062E22] truncate">{u.displayName}</div>
+                                    <div className="font-extrabold text-sm text-[#12231B] truncate">{u.displayName}</div>
                                     <div className="text-[11px] text-zinc-400 font-mono truncate">{u.username}</div>
                                   </div>
                                 </div>
@@ -3484,9 +3610,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {adminTab === 'database' && (
           <div className="space-y-6 animate-fadeIn">
             {/* Backup Cards */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
-                <Download className="w-5 h-5 text-emerald-700" />
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
+                <Download className="w-5 h-5 text-pine-700" />
                 <span>දත්ත ගොනු උපස්ථ කිරීම (Export Full Database)</span>
               </h3>
               <p className="text-xs text-zinc-500 font-medium">
@@ -3496,14 +3622,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <button
                   onClick={handleExportExcel}
-                  className="p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-950 text-left transition-all cursor-pointer space-y-1 group"
+                  className="p-4 rounded-2xl bg-pine-50 hover:bg-pine-100 border border-pine-200 text-pine-950 text-left transition-all cursor-pointer space-y-1 group"
                 >
                   <div className="flex items-center justify-between">
-                    <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
-                    <Download className="w-4 h-4 text-emerald-700 group-hover:translate-y-0.5 transition-transform" />
+                    <FileSpreadsheet className="w-5 h-5 text-pine-700" />
+                    <Download className="w-4 h-4 text-pine-700 group-hover:translate-y-0.5 transition-transform" />
                   </div>
                   <div className="font-extrabold text-sm mt-2">Export Excel (.xlsx)</div>
-                  <div className="text-[11px] text-emerald-800">Microsoft Excel Spreadsheet</div>
+                  <div className="text-[11px] text-pine-800">Microsoft Excel Spreadsheet</div>
                 </button>
 
                 <button
@@ -3520,22 +3646,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <button
                   onClick={handleExportJSON}
-                  className="p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-950 text-left transition-all cursor-pointer space-y-1 group"
+                  className="p-4 rounded-2xl bg-gold-50 hover:bg-gold-100 border border-gold-200 text-gold-950 text-left transition-all cursor-pointer space-y-1 group"
                 >
                   <div className="flex items-center justify-between">
-                    <Database className="w-5 h-5 text-amber-700" />
-                    <Download className="w-4 h-4 text-amber-700 group-hover:translate-y-0.5 transition-transform" />
+                    <Database className="w-5 h-5 text-gold-700" />
+                    <Download className="w-4 h-4 text-gold-700 group-hover:translate-y-0.5 transition-transform" />
                   </div>
                   <div className="font-extrabold text-sm mt-2">Export JSON Backup</div>
-                  <div className="text-[11px] text-amber-800">Raw JSON Structure Format</div>
+                  <div className="text-[11px] text-gold-800">Raw JSON Structure Format</div>
                 </button>
               </div>
             </div>
 
             {/* Full System Multi-Layer Diagnostics Card */}
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="text-base font-black text-[#062E22] flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-700" />
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-pine-700" />
                 <span>සමස්ත පද්ධති සන්නිවේදන පරීක්ෂාව (Full System Pipeline Diagnostics)</span>
               </h3>
               <p className="text-xs text-zinc-500 font-medium">
@@ -3568,7 +3694,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     }
                   }}
                   disabled={isTestingFirestore}
-                  className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
+                  className="px-5 py-3 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
                 >
                   {isTestingFirestore ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -3581,14 +3707,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {firestoreTestResult && (
                   <div className={`p-4 rounded-2xl border text-xs leading-relaxed font-mono whitespace-pre-wrap ${
                     firestoreTestResult.startsWith('SUCCESS') 
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                      ? 'bg-pine-50 border-pine-200 text-pine-900' 
                       : 'bg-zinc-50 border-zinc-300 text-zinc-900'
                   }`}>
                     <div className="font-bold mb-1 flex items-center gap-1.5">
                       {firestoreTestResult.startsWith('SUCCESS') ? (
-                        <span className="text-emerald-700">✅ SYSTEM HEALTH: ALL SERVICES OPERATIONAL</span>
+                        <span className="text-pine-700">✅ SYSTEM HEALTH: ALL SERVICES OPERATIONAL</span>
                       ) : (
-                        <span className="text-amber-700">📋 SYSTEM DIAGNOSTIC RESULTS</span>
+                        <span className="text-gold-700">📋 SYSTEM DIAGNOSTIC RESULTS</span>
                       )}
                     </div>
                     {firestoreTestResult}
@@ -3605,13 +3731,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* ============================================================= */}
         {adminTab === 'cloudinary' && (
           <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
+            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#062E22] flex items-center justify-center flex-shrink-0 border border-emerald-150">
-                  <UploadCloud className="w-6 h-6 text-emerald-750" />
+                <div className="w-12 h-12 rounded-2xl bg-pine-50 text-[#12231B] flex items-center justify-center flex-shrink-0 border border-pine-100">
+                  <UploadCloud className="w-6 h-6 text-pine-700" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-[#062E22]">
+                  <h3 className="font-display text-base font-black text-[#12231B]">
                     Cloudinary මාධ්‍ය ගබඩාව (Media Storage Settings)
                   </h3>
                   <p className="text-xs text-zinc-500 font-medium">
@@ -3621,14 +3747,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* Guide card */}
-              <div className="bg-[#FAF9F5] border border-emerald-100 rounded-2xl p-4 text-xs text-[#062E22] space-y-2 leading-relaxed">
-                <h4 className="font-bold flex items-center gap-1 text-emerald-950">
-                  <Sparkles className="w-4 h-4 text-emerald-700" />
+              <div className="bg-[#FBF6E8] border border-pine-100 rounded-2xl p-4 text-xs text-[#12231B] space-y-2 leading-relaxed">
+                <h4 className="font-bold flex items-center gap-1 text-pine-950">
+                  <Sparkles className="w-4 h-4 text-pine-700" />
                   <span>Cloudinary ගිණුම සම්බන්ධ කරගන්නා ආකාරය (Setup Guide):</span>
                 </h4>
                 <ol className="list-decimal pl-5 space-y-1.5 text-zinc-600 font-medium text-[11px]">
                   <li>
-                    <a href="https://cloudinary.com/" target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline font-bold">Cloudinary.com</a> වෙත ගොස් නොමිලේ ගිණුමක් (Free Account) සාදා ගන්න.
+                    <a href="https://cloudinary.com/" target="_blank" rel="noreferrer" className="text-pine-700 hover:underline font-bold">Cloudinary.com</a> වෙත ගොස් නොමිලේ ගිණුමක් (Free Account) සාදා ගන්න.
                   </li>
                   <li>
                     Dashboard එකෙහි ඇති ඔබගේ <b>Cloud Name</b> එක මෙහි ඇතුළත් කරන්න.
@@ -3652,11 +3778,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="button"
                     onClick={() => setCloudinaryEnabled(!cloudinaryEnabled)}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      cloudinaryEnabled ? 'bg-emerald-700' : 'bg-zinc-300'
+                      cloudinaryEnabled ? 'bg-pine-700' : 'bg-zinc-300'
                     }`}
                   >
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-parchment-50 shadow-sm ring-0 transition duration-200 ease-in-out ${
                         cloudinaryEnabled ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
@@ -3671,7 +3797,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={cloudinaryCloudName}
                       onChange={(e) => setCloudinaryCloudName(e.target.value.trim())}
                       placeholder="e.g. dxyz12345"
-                      className="w-full px-4 py-3 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-4 py-3 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
 
@@ -3682,7 +3808,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={cloudinaryUploadPreset}
                       onChange={(e) => setCloudinaryUploadPreset(e.target.value.trim())}
                       placeholder="e.g. ml_default_preset"
-                      className="w-full px-4 py-3 bg-[#FAF9F5] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                      className="w-full px-4 py-3 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-pine-700 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -3709,7 +3835,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       setIsSavingCloudinary(false);
                     }
                   }}
-                  className="px-5 py-3 bg-[#062E22] hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="px-5 py-3 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSavingCloudinary ? (
                     <>
@@ -3728,6 +3854,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 };

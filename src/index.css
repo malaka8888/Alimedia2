@@ -2,6 +2,53 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ============================================================
+   Admin Console design tokens — "Field Registry" system
+   Used exclusively by AdminPanel.tsx; does not alter the
+   public-facing site's palette below.
+   ============================================================ */
+@theme {
+  --color-pine-50: #EEF3EE;
+  --color-pine-100: #D8E4D9;
+  --color-pine-200: #B2CAB4;
+  --color-pine-300: #88AC8C;
+  --color-pine-400: #628C68;
+  --color-pine-500: #47714D;
+  --color-pine-600: #375B3D;
+  --color-pine-700: #2D4B32;
+  --color-pine-800: #223A27;
+  --color-pine-900: #182A1D;
+  --color-pine-950: #101D14;
+
+  --color-gold-50: #FBF4E1;
+  --color-gold-100: #F5E6BC;
+  --color-gold-200: #ECCF85;
+  --color-gold-300: #E0B457;
+  --color-gold-400: #CE9A37;
+  --color-gold-500: #B5822B;
+  --color-gold-600: #966A22;
+  --color-gold-700: #78551D;
+  --color-gold-800: #5D4217;
+  --color-gold-900: #493410;
+  --color-gold-950: #2D200A;
+
+  --color-parchment-50: #FEFCF6;
+  --color-parchment-100: #FBF6E8;
+  --color-parchment-200: #F4EBD2;
+  --color-parchment-300: #EADFBF;
+  --color-parchment-400: #D9C99C;
+
+  --color-ink-50: #F0F2EF;
+  --color-ink-100: #D5DAD3;
+  --color-ink-400: #5B6B60;
+  --color-ink-600: #34423A;
+  --color-ink-800: #1B2D22;
+  --color-ink-900: #142219;
+  --color-ink-950: #0D1712;
+
+  --font-display: "Fraunces", "Noto Serif Sinhala", serif;
+}
+
 @layer base {
   :root {
     --color-offwhite-bg: #F8F9F5;
@@ -78,6 +125,42 @@ html.dark .logo-theme-aware,
 
 .font-sinhala {
   font-family: 'Noto Sans Sinhala', 'Plus Jakarta Sans', sans-serif;
+}
+
+/* ============================================================
+   Admin Console — ledger-style structural devices
+   ============================================================ */
+
+/* Double hairline rule used atop registry cards, like a ledger header */
+.ledger-rule {
+  background-image:
+    linear-gradient(to right, currentColor, currentColor);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: top;
+  box-shadow: 0 3px 0 -2px currentColor;
+}
+
+/* Wax-seal emblem used in the admin sidebar */
+.registry-seal {
+  background:
+    radial-gradient(circle at 32% 28%, var(--color-gold-300), var(--color-gold-500) 45%, var(--color-gold-700) 100%);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.35), inset 0 -3px 6px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+.admin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.admin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-gold-300);
+  border-radius: 9999px;
+}
+.admin-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold-500);
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
