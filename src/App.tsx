@@ -13,7 +13,6 @@ import {
   addCulturalEvent,
   updateCulturalEvent,
   deleteCulturalEvent,
-  saveElephantsBatch,
 } from './firebase/elephantService';
 import { getAllElephantPosts } from './firebase/postService';
 import { Navbar } from './components/Navbar';
@@ -545,20 +544,6 @@ export default function App() {
     }
   };
 
-  const handleSaveElephantsBatch = async (
-    operations: {
-      data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>;
-      id?: string;
-    }[]
-  ) => {
-    await saveElephantsBatch(operations);
-    getElephants().then((fresh) => {
-      if (fresh && fresh.length > 0) {
-        setElephants(fresh);
-      }
-    }).catch(() => {});
-  };
-
   const handleDeleteElephant = async (id: string, name?: string, sinhalaName?: string) => {
     const result = await deleteElephantCascade(id, name, sinhalaName);
     showNotification(
@@ -833,8 +818,8 @@ export default function App() {
         <AdminPanel
           elephants={elephants}
           events={events}
+          posts={posts}
           onSaveElephant={handleSaveElephant}
-          onSaveElephantsBatch={handleSaveElephantsBatch}
           onDeleteElephant={handleDeleteElephant}
           onToggleVerification={handleToggleVerification}
           onToggleFeatured={handleToggleFeatured}

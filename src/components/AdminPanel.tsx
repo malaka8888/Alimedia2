@@ -1,199 +1,58 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type { User } from 'firebase/auth';
 import {
   Elephant,
   CulturalEvent,
   ElephantPost,
   ElephantType,
   Gender,
-  ElephantSource
+  ElephantSource,
 } from '../types/elephant';
+import { UserProfile } from '../types/user';
 import {
-  ShieldCheck,
-  ShieldAlert,
-  Crown,
-  Sparkles,
-  Search,
-  Plus,
-  Trash2,
-  Edit,
-  Save,
-  Eye,
+  LayoutDashboard,
+  PawPrint,
+  CalendarDays,
+  Images,
+  Users as UsersIcon,
   LogOut,
   Lock,
   Mail,
-  CheckCircle2,
-  AlertTriangle,
-  RefreshCw,
-  Database,
-  Calendar,
-  Image as ImageIcon,
-  Building2,
-  User,
-  Users,
-  UserX,
-  Star,
-  Radio,
-  ExternalLink,
-  ChevronRight,
-  ArrowLeft,
+  Eye,
+  EyeOff,
+  Plus,
+  Pencil,
+  Trash2,
   X,
-  FileText,
-  Download,
-  FileSpreadsheet,
-  Upload,
-  UploadCloud,
-  Camera,
+  Search,
+  Star,
+  ShieldCheck,
+  Radio,
   Loader2,
-  Check,
-  LayoutDashboard,
-  MessageSquare,
-  Flame,
+  ImagePlus,
+  ArrowLeft,
   Heart,
-  Share2,
-  Layers,
-  Settings,
-  HelpCircle,
-  Clock,
-  MapPin,
-  Tag
+  AlertTriangle,
+  Check,
+  Menu,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { Language, translations } from '../utils/translations';
-import { BulkImportElephants } from './BulkImportElephants';
-import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
-import { VisitorInfo, subscribeToVisitors } from '../firebase/presenceService';
-import { resetAllCountsInFirestore } from '../firebase/migrationService';
-import { getCloudinaryConfig, saveCloudinaryConfig, uploadPhotoToCloudinary, uploadImageToCloudinary } from '../firebase/cloudinaryService';
-import { runFirestoreDiagnosticTest, runCompleteSystemDiagnostics } from '../firebase/elephantService';
-import { getAllUsers, deleteUserAccount } from '../firebase/userService';
-import { UserProfile } from '../types/user';
-import { auth } from '../firebase/config';
+import { Language } from '../utils/translations';
 import { LOGO_URL } from './Navbar';
+import { compressImageFile } from '../utils/imageCompressor';
+import { uploadPhotoToCloudinary } from '../firebase/cloudinaryService';
+import { getAllElephantPosts, deleteElephantPost } from '../firebase/postService';
+import { getAllUsers, deleteUserAccount } from '../firebase/userService';
+import { signInAdmin, signOutAdmin, subscribeAdminAuthState, getAdminAuthErrorMessage } from '../firebase/adminAuthService';
 
-export interface AdminPhotoSelection {
-  id: string;
-  file: File | null;
-  url: string;
-  publicId: string;
-  status: 'pending' | 'compressing' | 'uploading' | 'success' | 'failed';
-  error?: string;
-  progress?: number;
-}
-
-// Helper to validate and sanitize Firestore payloads to prevent non-serializable properties or circular structures from causing hangs
-const validateAndSanitizeFirestorePayload = (data: any, path = 'root'): any => {
-  if (data === null || data === undefined) {
-    return null;
-  }
-
-  const type = typeof data;
-
-  if (type === 'string') {
-    // Check if it's a huge base64 data URL
-    if (data.startsWith('data:image/') || data.startsWith('data:application/')) {
-      throw new Error(`Validation Error at ${path}: String contains Base64 image data instead of a proper hosted URL.`);
-    }
-    // Limit string size to prevent denial of wallet/storage issues
-    if (data.length > 500000) {
-      throw new Error(`Validation Error at ${path}: String is too large (${data.length} characters). Limit is 500,000.`);
-    }
-    return data;
-  }
-
-  if (type === 'number' || type === 'boolean') {
-    return data;
-  }
-
-  // Check for common non-serializable browser objects
-  if (data instanceof File) {
-    throw new Error(`Validation Error at ${path}: Found native File object. Files must be uploaded to Cloudinary first.`);
-  }
-  if (data instanceof Blob) {
-    throw new Error(`Validation Error at ${path}: Found native Blob object. Blobs must be uploaded to Cloudinary first.`);
-  }
-  if (data instanceof Promise) {
-    throw new Error(`Validation Error at ${path}: Found Promise object. All async operations must be awaited.`);
-  }
-
-  if (Array.isArray(data)) {
-    return data
-      .filter((item) => item !== undefined)
-      .map((item, idx) => validateAndSanitizeFirestorePayload(item, `${path}[${idx}]`));
-  }
-
-  if (type === 'object') {
-    // Check if it's a plain object
-    const proto = Object.getPrototypeOf(data);
-    if (proto !== null && proto !== Object.prototype) {
-      if (data.constructor?.name === 'Timestamp' || data.constructor?.name === 'FieldValueImpl' || data.constructor?.name === 'ServerTimestampTransform') {
-        return data; // Allow Firestore types
-      }
-      throw new Error(`Validation Error at ${path}: Found non-plain object (${data.constructor?.name}). Firestore payloads must be plain objects.`);
-    }
-
-    const sanitized: any = {};
-    for (const key of Object.keys(data)) {
-      const val = data[key];
-      if (val !== undefined) {
-        sanitized[key] = validateAndSanitizeFirestorePayload(val, `${path}.${key}`);
-      }
-    }
-    return sanitized;
-  }
-
-  throw new Error(`Validation Error at ${path}: Unsupported data type "${type}".`);
-};
-
-// Utility to compress high-resolution gallery images to web-optimized JPEG data URLs
-const compressImageFile = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.85): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Selected file is not an image'));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        } else {
-          resolve(e.target?.result as string);
-        }
-      };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
+// -------------------------------------------------------------
+// Props
+// -------------------------------------------------------------
 
 interface AdminPanelProps {
   elephants: Elephant[];
   events: CulturalEvent[];
-  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string, skipRefresh?: boolean) => Promise<void>;
-  onSaveElephantsBatch?: (operations: { data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>; id?: string; }[]) => Promise<void>;
+  posts: ElephantPost[];
+  onSaveElephant: (elephant: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>;
   onDeleteElephant: (id: string, name?: string, sinhalaName?: string) => Promise<{
     deletedElephantName: string;
     postsDeleted: number;
@@ -210,3651 +69,1498 @@ interface AdminPanelProps {
   language: Language;
 }
 
-const DEFAULT_ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || 'admin@alimedia.com';
-const DEFAULT_ADMIN_PASS = (import.meta as any).env?.VITE_ADMIN_PASSWORD || 'admin@alimedia';
+type AdminTab = 'dashboard' | 'elephants' | 'events' | 'posts' | 'users';
 
-const POPULAR_PERAHERAS = [
-  'Kandy Esala Perahera (මහනුවර ඇසළ පෙරහැර)',
-  'Kelaniya Duruthu Maha Perahera (කැලණිය පෙරහැර)',
-  'Bellanwila Esala Perahera (බෙල්ලන්විල පෙරහැර)',
-  'Ruhunu Maha Kataragama Esala Perahera (කතරගම පෙරහැර)',
-  'Gangarama Navam Maha Perahera (නවම් පෙරහැර)',
-  'Kotte Sri Rajamaha Vihara Perahera (කෝට්ටේ පෙරහැර)',
-  'Devinuwara Esala Perahera (දෙවිනුවර පෙරහැර)',
-  'Aluth Sahal Mangallaya (අලුත් සහල් මංගල්‍යය)',
-  'Seenigama Devalaya Perahera (සීනිගම දේවාල පෙරහැර)'
+const EMPTY_ELEPHANT_FORM = {
+  name: '',
+  sinhalaName: '',
+  otherNames: '',
+  gender: 'male' as Gender,
+  type: 'elephant' as ElephantType,
+  dateOfBirth: '',
+  age: '',
+  location: '',
+  organization: '',
+  mahout: '',
+  tusks: '',
+  physicalCharacteristics: '',
+  description: '',
+  peraheraParticipation: '',
+  sourcesText: '',
+  verified: true,
+  status: 'living' as 'living' | 'memorial',
+  isFeatured: false,
+  isLive: false,
+  customBadge: '',
+};
+
+const EMPTY_EVENT_FORM = {
+  title: '',
+  sinhalaTitle: '',
+  description: '',
+  location: '',
+  date: '',
+  type: 'perahera' as CulturalEvent['type'],
+  participatingElephants: '',
+  isActive: true,
+  coverImage: '',
+};
+
+// -------------------------------------------------------------
+// Small shared UI bits
+// -------------------------------------------------------------
+
+const NAV_ITEMS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'elephants', label: 'Elephants', icon: PawPrint },
+  { id: 'events', label: 'Events', icon: CalendarDays },
+  { id: 'posts', label: 'Posts', icon: Images },
+  { id: 'users', label: 'Users', icon: UsersIcon },
 ];
 
-const PRESET_ELEPHANT_PHOTOS = [
-  'https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1581852017103-68ac65514cf7?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1549366021-9f761d450615?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1534567153574-2b12153a87f0?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1603855073959-f23247076a03?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1564760055775-d63b17a55c44?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1544979590-37e9b47eb705?auto=format&fit=crop&w=1200&q=80'
-];
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = 'Delete',
+  destructive = true,
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] bg-ink-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-parchment-50 rounded-2xl max-w-sm w-full p-5 border border-parchment-300 shadow-2xl animate-fadeIn">
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${destructive ? 'bg-red-100 text-red-600' : 'bg-pine-100 text-pine-700'}`}>
+            <AlertTriangle className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-ink-950 text-sm">{title}</h3>
+            <p className="text-xs text-ink-600 mt-1 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="flex-1 py-2 rounded-xl text-xs font-bold bg-parchment-200 text-ink-800 hover:bg-parchment-300 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5 ${
+              destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-pine-700 hover:bg-pine-800'
+            }`}
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-export type AdminCategoryTab =
-  | 'overview'
-  | 'elephants'
-  | 'editor'
-  | 'posts'
-  | 'events'
-  | 'users'
-  | 'bulk_import'
-  | 'database'
-  | 'cloudinary';
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-ink-600">
+        {label} {required && <span className="text-red-500">*</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const inputCls =
+  'w-full px-3 py-2 rounded-xl border border-parchment-300 bg-white text-sm text-ink-950 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-pine-500/40 focus:border-pine-500 transition-all';
+
+// -------------------------------------------------------------
+// Login screen
+// -------------------------------------------------------------
+
+function AdminLogin({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) {
+      setError('Please enter both email and password.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await signInAdmin(email, password);
+      // onAuthStateChanged listener in the parent will pick this up automatically.
+    } catch (err: any) {
+      setError(getAdminAuthErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-parchment-50 rounded-3xl max-w-sm w-full border border-parchment-300 shadow-2xl overflow-hidden animate-fadeIn">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-parchment-200 hover:bg-parchment-300 flex items-center justify-center text-ink-600 transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="pt-8 pb-5 flex flex-col items-center border-b border-parchment-200 px-6">
+          <div className="registry-seal w-14 h-14 rounded-full flex items-center justify-center mb-3">
+            <ShieldCheck className="w-6 h-6 text-ink-950/80" />
+          </div>
+          <h2 className="font-display text-lg font-bold text-ink-950">Admin Console</h2>
+          <p className="text-[11px] text-ink-500 mt-1">Sign in with your registered admin account</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-3 py-2.5 rounded-xl flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <Field label="Email">
+            <div className="relative">
+              <Mail className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@example.com"
+                className={`${inputCls} pl-9`}
+                disabled={submitting}
+              />
+            </div>
+          </Field>
+
+          <Field label="Password">
+            <div className="relative">
+              <Lock className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className={`${inputCls} pl-9 pr-9`}
+                disabled={submitting}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </Field>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-2.5 rounded-xl bg-pine-800 hover:bg-pine-900 text-parchment-50 text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {submitting ? 'Signing in…' : 'Sign In'}
+          </button>
+
+          <p className="text-[10.5px] text-ink-500 text-center leading-relaxed pt-1">
+            Admin access is limited to accounts added by the platform owner in the Firebase Console.
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Main Admin Panel
+// -------------------------------------------------------------
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   elephants,
   events,
+  posts,
   onSaveElephant,
-  onSaveElephantsBatch,
   onDeleteElephant,
   onToggleVerification,
   onToggleFeatured,
   onToggleLive,
   onSaveEvent,
   onDeleteEvent,
-  onSeedDatabase,
   onViewElephant,
   onClose,
-  language,
 }) => {
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('alimedia_admin_auth') === 'true';
-  });
-  const [emailInput, setEmailInput] = useState<string>('');
-  const [passwordInput, setPasswordInput] = useState<string>('');
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  // Visitors & Reset Metrics State
-  const [visitors, setVisitors] = useState<VisitorInfo[]>([]);
-  const [isResettingMetrics, setIsResettingMetrics] = useState(false);
-
-  // Cloudinary configuration states
-  const [cloudinaryCloudName, setCloudinaryCloudName] = useState('');
-  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState('');
-  const [cloudinaryEnabled, setCloudinaryEnabled] = useState(false);
-  const [isSavingCloudinary, setIsSavingCloudinary] = useState(false);
+  // ---- Auth ----
+  const [authChecked, setAuthChecked] = useState(false);
+  const [adminUser, setAdminUser] = useState<User | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      getCloudinaryConfig().then((config) => {
-        setCloudinaryCloudName(config.cloudName || '');
-        setCloudinaryUploadPreset(config.uploadPreset || '');
-        setCloudinaryEnabled(config.enabled || false);
-      }).catch((err) => {
-        console.error('Failed to fetch Cloudinary configuration on auth:', err);
-      });
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      const unsub = subscribeToVisitors((data) => {
-        setVisitors(data);
-      });
-      return unsub;
-    }
-  }, [isAuthenticated]);
-
-  // Admin Navigation Tabs (Categorized & Mobile-friendly)
-  const [adminTab, setAdminTab] = useState<AdminCategoryTab>('overview');
-
-  // Helper: Format active duration nicely
-  const formatActiveDuration = (sessionStart: any, lastActive: any): string => {
-    if (!sessionStart || !lastActive) return '0s';
-    
-    const startMs = typeof sessionStart.toMillis === 'function' 
-      ? sessionStart.toMillis() 
-      : (sessionStart.seconds ? sessionStart.seconds * 1000 : Date.parse(sessionStart) || Date.now());
-    const activeMs = typeof lastActive.toMillis === 'function' 
-      ? lastActive.toMillis() 
-      : (lastActive.seconds ? lastActive.seconds * 1000 : Date.parse(lastActive) || Date.now());
-    
-    const diffSec = Math.max(0, Math.floor((activeMs - startMs) / 1000));
-    if (diffSec < 60) return `${diffSec}s`;
-    const diffMin = Math.floor(diffSec / 60);
-    const remainingSec = diffSec % 60;
-    if (diffMin < 60) return `${diffMin}m ${remainingSec}s`;
-    const diffHr = Math.floor(diffMin / 60);
-    const remainingMin = diffMin % 60;
-    return `${diffHr}h ${remainingMin}m`;
-  };
-
-  // Helper: Check if a visitor is currently online
-  const isVisitorOnline = (lastActive: any): boolean => {
-    if (!lastActive) return false;
-    const activeMs = typeof lastActive.toMillis === 'function' 
-      ? lastActive.toMillis() 
-      : (lastActive.seconds ? lastActive.seconds * 1000 : Date.parse(lastActive) || Date.now());
-    const diffSec = (Date.now() - activeMs) / 1000;
-    return diffSec < 120; // active in last 2 minutes
-  };
-  
-  // Search and Filter State for Elephants
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<
-    'all' | 'tusker' | 'elephant' | 'verified' | 'unverified' | 'featured' | 'live' | 'living' | 'memorial'
-  >('all');
-
-  // Community Posts State
-  const [communityPosts, setCommunityPosts] = useState<ElephantPost[]>([]);
-  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
-  const [postsSearch, setPostsSearch] = useState('');
-  const [postFilter, setPostFilter] = useState<'all' | 'stories' | 'feed'>('all');
-
-  // Registered Users State (Admin Management)
-  const [registeredUsers, setRegisteredUsers] = useState<UserProfile[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-  const [usersSearch, setUsersSearch] = useState('');
-  const [deletingUserTarget, setDeletingUserTarget] = useState<UserProfile | null>(null);
-  const [isDeletingUser, setIsDeletingUser] = useState(false);
-
-  // Form Editing State
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>>({
-    name: '',
-    sinhalaName: '',
-    otherNames: [],
-    gender: 'male',
-    type: 'tusker',
-    dateOfBirth: '',
-    age: '',
-    location: '',
-    organization: '',
-    mahout: '',
-    tusks: '',
-    physicalCharacteristics: '',
-    description: '',
-    peraheraParticipation: [],
-    photos: [PRESET_ELEPHANT_PHOTOS[0]],
-    sources: [{ title: 'Department of Wildlife Conservation / Temple Custodians', url: '', publisher: 'Official Registry', verifiedDate: '2024' }],
-    verified: true,
-    status: 'living',
-    isFeatured: false,
-    isLive: false,
-    customBadge: '',
-  });
-
-  // Helpers for text inputs
-  const [otherNamesText, setOtherNamesText] = useState('');
-  const [peraheraText, setPeraheraText] = useState('');
-
-  // Event Editing State
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [eventFormData, setEventFormData] = useState<Omit<CulturalEvent, 'id' | 'createdAt' | 'updatedAt'>>({
-    title: '',
-    sinhalaTitle: '',
-    description: '',
-    location: '',
-    date: '',
-    type: 'perahera',
-    participatingElephants: [],
-    isActive: true,
-    coverImage: '',
-  });
-  const [eventElephantsText, setEventElephantsText] = useState('');
-  const [isCompressingEventCover, setIsCompressingEventCover] = useState(false);
-  const eventCoverInputRef = useRef<HTMLInputElement>(null);
-
-  // Action status
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [isTestingFirestore, setIsTestingFirestore] = useState(false);
-  const [firestoreTestResult, setFirestoreTestResult] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  // Gallery Image Upload State & Ref
-  const galleryInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
-
-  // Cascade Deletion Confirmation Modal State
-  const [deletingElephantTarget, setDeletingElephantTarget] = useState<Elephant | null>(null);
-  const [isDeletingCascade, setIsDeletingCascade] = useState(false);
-
-  // Rebuilt photo selections state for streamlined Cloudinary uploads
-  const [photoSelections, setPhotoSelections] = useState<AdminPhotoSelection[]>([]);
-
-  const showToast = (msg: string) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(null), 3500);
-  };
-
-  // Error banner state - used INSTEAD of window.alert().
-  // window.alert()/confirm() are unreliable inside embedded/sandboxed webviews
-  // (app-builder preview panes, in-app browsers, PWA shells, etc.) - they can be
-  // silently blocked or throw, which makes actions like Save/Delete look like
-  // "nothing happens" even though a real error occurred. All error feedback in
-  // this panel is rendered as in-app UI instead so it always displays.
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const showError = (msg: string) => {
-    setErrorMessage(msg);
-  };
-
-  // Generic in-app confirmation modal state - replaces window.confirm() for the
-  // same reason as above (confirm() can be blocked/auto-dismissed in webviews,
-  // which would silently skip the action it was guarding).
-  const [confirmDialog, setConfirmDialog] = useState<{
-    message: string;
-    onConfirm: () => void | Promise<void>;
-  } | null>(null);
-  const requestConfirm = (message: string, onConfirm: () => void | Promise<void>) => {
-    setConfirmDialog({ message, onConfirm });
-  };
-
-  // Load community posts when entering moderation tab or overview
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadCommunityPosts();
-    }
-  }, [isAuthenticated, adminTab]);
-
-  // Load registered users when entering the users tab or overview
-  useEffect(() => {
-    if (isAuthenticated && (adminTab === 'users' || adminTab === 'overview')) {
-      loadUsers();
-    }
-  }, [isAuthenticated, adminTab]);
-
-  const loadCommunityPosts = async () => {
-    try {
-      setIsLoadingPosts(true);
-      const posts = await getAllElephantPosts();
-      setCommunityPosts(posts);
-    } catch (err) {
-      console.warn('Could not load community posts:', err);
-    } finally {
-      setIsLoadingPosts(false);
-    }
-  };
-
-  const loadUsers = async () => {
-    try {
-      setIsLoadingUsers(true);
-      const users = await getAllUsers();
-      setRegisteredUsers(users);
-    } catch (err) {
-      console.warn('Could not load registered users:', err);
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  };
-
-  // Trigger Remove-User Confirmation Modal
-  const handleTriggerDeleteUser = (user: UserProfile) => {
-    setDeletingUserTarget(user);
-  };
-
-  // Confirm permanent removal of a user account from Firestore
-  const handleConfirmDeleteUser = async () => {
-    if (!deletingUserTarget || !deletingUserTarget.uid) return;
-    try {
-      setIsDeletingUser(true);
-      const res = await deleteUserAccount(deletingUserTarget.uid);
-      setRegisteredUsers((prev) => prev.filter((u) => u.uid !== deletingUserTarget.uid));
-      showToast(
-        `"${deletingUserTarget.displayName || deletingUserTarget.username}" ${res.postsDeleted} posts සමඟ Database එකෙන් ස්ථිරවම ඉවත් කරන ලදී!`
-      );
-      setDeletingUserTarget(null);
-      await loadCommunityPosts();
-    } catch (err: any) {
-      console.error('Error deleting user account:', err);
-      showError(`පරිශීලකයා ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`);
-    } finally {
-      setIsDeletingUser(false);
-    }
-  };
-
-  const filteredUsers = registeredUsers.filter((u) => {
-    if (!usersSearch.trim()) return true;
-    const q = usersSearch.trim().toLowerCase();
-    return (
-      (u.displayName || '').toLowerCase().includes(q) ||
-      (u.username || '').toLowerCase().includes(q) ||
-      (u.email || '').toLowerCase().includes(q)
-    );
-  });
-
-  // Handle Login
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (
-      emailInput.trim().toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() &&
-      passwordInput === DEFAULT_ADMIN_PASS
-    ) {
-      setIsAuthenticated(true);
-      localStorage.setItem('alimedia_admin_auth', 'true');
-      setAuthError(null);
-    } else {
-      setAuthError('වැරදි විද්‍යුත් තැපෑල හෝ මුරපදයකි! (Invalid Username or Password)');
-    }
-  };
-
-  // Handle Logout
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('alimedia_admin_auth');
-  };
-
-  // Open Create Elephant Form
-  const handleOpenCreateForm = () => {
-    setEditingId(null);
-    setFormData({
-      name: '',
-      sinhalaName: '',
-      otherNames: [],
-      gender: 'male',
-      type: 'tusker',
-      dateOfBirth: '',
-      age: '',
-      location: '',
-      organization: '',
-      mahout: '',
-      tusks: 'දිගු සවිමත් යුගල දළ (Twin symmetrical ivory tusks)',
-      physicalCharacteristics: '',
-      description: '',
-      peraheraParticipation: [],
-      photos: [],
-      sources: [{ title: 'Department of Wildlife Conservation / Temple Registry', url: '', publisher: 'Official Custodians', verifiedDate: '2024' }],
-      verified: true,
-      status: 'living',
-      isFeatured: false,
-      isLive: false,
-      customBadge: '',
+    const unsub = subscribeAdminAuthState((user) => {
+      setAdminUser(user);
+      setAuthChecked(true);
     });
-    setOtherNamesText('');
-    setPeraheraText('');
-    setPhotoSelections([]);
-    setAdminTab('editor');
+    return unsub;
+  }, []);
+
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Lock page scroll while the console is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  if (!authChecked) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-ink-950/70 backdrop-blur-sm flex items-center justify-center">
+        <Loader2 className="w-7 h-7 text-parchment-50 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!adminUser) {
+    return <AdminLogin onClose={onClose} />;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-ink-950 flex text-ink-950 font-sans">
+      {/* Sidebar (desktop) */}
+      <aside className="hidden md:flex md:w-60 lg:w-64 flex-col bg-ink-950 text-parchment-100 border-r border-white/10 shrink-0">
+        <div className="p-5 flex items-center gap-2.5 border-b border-white/10">
+          <img src={LOGO_URL} alt="" className="w-8 h-8 rounded-full object-cover" />
+          <div>
+            <p className="font-display font-bold text-sm leading-tight">Alimedia</p>
+            <p className="text-[10px] text-parchment-400 uppercase tracking-wider">Admin Console</p>
+          </div>
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                  active ? 'bg-gold-500/15 text-gold-300' : 'text-parchment-300 hover:bg-white/5'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-3 border-t border-white/10 space-y-1">
+          <div className="px-3 py-2 text-[11px] text-parchment-400 truncate">{adminUser.email}</div>
+          <button
+            onClick={() => signOutAdmin()}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-parchment-300 hover:bg-white/5 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-parchment-300 hover:bg-white/5 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Site
+          </button>
+        </div>
+      </aside>
+
+      {/* Main column */}
+      <div className="flex-1 flex flex-col min-w-0 bg-parchment-50">
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 bg-ink-950 text-parchment-100 shrink-0">
+          <button onClick={() => setMobileNavOpen((s) => !s)} className="p-1.5 -ml-1.5">
+            <Menu className="w-5 h-5" />
+          </button>
+          <p className="font-display font-bold text-sm">{NAV_ITEMS.find((n) => n.id === activeTab)?.label}</p>
+          <button onClick={onClose} className="p-1.5 -mr-1.5">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {mobileNavOpen && (
+          <div className="md:hidden bg-ink-950 text-parchment-100 px-3 pb-3 shrink-0 grid grid-cols-3 gap-1.5">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setMobileNavOpen(false);
+                  }}
+                  className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-[10px] font-bold ${
+                    active ? 'bg-gold-500/15 text-gold-300' : 'text-parchment-300'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => signOutAdmin()}
+              className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-[10px] font-bold text-parchment-300"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto admin-scroll">
+          <div className="max-w-5xl mx-auto p-4 sm:p-6">
+            {activeTab === 'dashboard' && (
+              <DashboardTab elephants={elephants} events={events} posts={posts} />
+            )}
+            {activeTab === 'elephants' && (
+              <ElephantsTab
+                elephants={elephants}
+                onSaveElephant={onSaveElephant}
+                onDeleteElephant={onDeleteElephant}
+                onToggleVerification={onToggleVerification}
+                onToggleFeatured={onToggleFeatured}
+                onToggleLive={onToggleLive}
+                onViewElephant={onViewElephant}
+              />
+            )}
+            {activeTab === 'events' && (
+              <EventsTab elephants={elephants} events={events} onSaveEvent={onSaveEvent} onDeleteEvent={onDeleteEvent} />
+            )}
+            {activeTab === 'posts' && <PostsTab posts={posts} />}
+            {activeTab === 'users' && <UsersTab />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------
+// Dashboard
+// -------------------------------------------------------------
+
+function StatCard({ label, value, icon: Icon }: { label: string; value: number | string; icon: React.ElementType }) {
+  return (
+    <div className="bg-white rounded-2xl border border-parchment-200 p-4 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-pine-50 text-pine-700 flex items-center justify-center shrink-0">
+        <Icon className="w-5 h-5" />
+      </div>
+      <div>
+        <p className="text-xl font-extrabold text-ink-950 leading-tight">{value}</p>
+        <p className="text-[11px] text-ink-500 font-semibold uppercase tracking-wide">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardTab({ elephants, events, posts }: { elephants: Elephant[]; events: CulturalEvent[]; posts: ElephantPost[] }) {
+  const verified = elephants.filter((e) => e.verified).length;
+  const featured = elephants.filter((e) => e.isFeatured).length;
+  const live = elephants.filter((e) => e.isLive).length;
+
+  return (
+    <div className="space-y-5 animate-fadeIn">
+      <div>
+        <h1 className="font-display text-xl font-bold text-ink-950">Overview</h1>
+        <p className="text-xs text-ink-500 mt-0.5">A quick snapshot of the registry's live data.</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard label="Elephants" value={elephants.length} icon={PawPrint} />
+        <StatCard label="Verified" value={verified} icon={ShieldCheck} />
+        <StatCard label="Featured" value={featured} icon={Star} />
+        <StatCard label="Live now" value={live} icon={Radio} />
+        <StatCard label="Events" value={events.length} icon={CalendarDays} />
+        <StatCard label="Community posts" value={posts.length} icon={Images} />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4">
+        <h3 className="text-sm font-bold text-ink-950 mb-3">Recently added elephants</h3>
+        {elephants.length === 0 ? (
+          <p className="text-xs text-ink-500">No elephants in the registry yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {elephants.slice(0, 5).map((el) => (
+              <div key={el.id} className="flex items-center gap-3 py-1.5">
+                <div className="w-9 h-9 rounded-lg bg-parchment-200 overflow-hidden shrink-0">
+                  {el.photos?.[0] && <img src={el.photos[0]} alt="" className="w-full h-full object-cover" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-ink-950 truncate">{el.name}</p>
+                  <p className="text-[10.5px] text-ink-500 truncate">{el.location || 'No location set'}</p>
+                </div>
+                {el.verified && <ShieldCheck className="w-3.5 h-3.5 text-pine-600 shrink-0" />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Elephants Tab — full CRUD
+// -------------------------------------------------------------
+
+interface PhotoSlot {
+  url: string;
+  publicId: string;
+  status: 'ready' | 'uploading' | 'error';
+}
+
+function ElephantsTab({
+  elephants,
+  onSaveElephant,
+  onDeleteElephant,
+  onToggleVerification,
+  onToggleFeatured,
+  onToggleLive,
+  onViewElephant,
+}: {
+  elephants: Elephant[];
+  onSaveElephant: AdminPanelProps['onSaveElephant'];
+  onDeleteElephant: AdminPanelProps['onDeleteElephant'];
+  onToggleVerification: AdminPanelProps['onToggleVerification'];
+  onToggleFeatured: AdminPanelProps['onToggleFeatured'];
+  onToggleLive: AdminPanelProps['onToggleLive'];
+  onViewElephant: AdminPanelProps['onViewElephant'];
+}) {
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | 'new' | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Elephant | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toggleBusyId, setToggleBusyId] = useState<string | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return elephants;
+    return elephants.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        (e.sinhalaName || '').toLowerCase().includes(q) ||
+        (e.location || '').toLowerCase().includes(q) ||
+        (e.organization || '').toLowerCase().includes(q)
+    );
+  }, [elephants, search]);
+
+  const editingElephant = editingId && editingId !== 'new' ? elephants.find((e) => e.id === editingId) || null : null;
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await onDeleteElephant(deleteTarget.id, deleteTarget.name, deleteTarget.sinhalaName);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      alert(`Failed to delete: ${err?.message || err}`);
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  // Open Edit Elephant Form
-  const handleOpenEditForm = (elephant: Elephant) => {
-    setEditingId(elephant.id || null);
-    setFormData({
+  if (editingId) {
+    return (
+      <ElephantForm
+        elephant={editingElephant}
+        onCancel={() => setEditingId(null)}
+        onSaved={() => setEditingId(null)}
+        onSaveElephant={onSaveElephant}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-xl font-bold text-ink-950">Elephants</h1>
+          <p className="text-xs text-ink-500 mt-0.5">{elephants.length} record(s) in the registry.</p>
+        </div>
+        <button
+          onClick={() => setEditingId('new')}
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-pine-800 hover:bg-pine-900 text-parchment-50 text-sm font-bold transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Elephant
+        </button>
+      </div>
+
+      <div className="relative">
+        <Search className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, location or organization…"
+          className={`${inputCls} pl-9`}
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-parchment-200 p-10 text-center">
+          <p className="text-sm text-ink-500">No elephants found.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map((el) => (
+            <div key={el.id} className="bg-white rounded-2xl border border-parchment-200 p-3.5 flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl bg-parchment-200 overflow-hidden shrink-0">
+                {el.photos?.[0] ? (
+                  <img src={el.photos[0]} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-ink-300">
+                    <PawPrint className="w-6 h-6" />
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-sm font-bold text-ink-950 truncate">{el.name}</p>
+                  {el.verified && <ShieldCheck className="w-3.5 h-3.5 text-pine-600 shrink-0" />}
+                  {el.isFeatured && <Star className="w-3.5 h-3.5 text-gold-500 shrink-0" />}
+                  {el.isLive && <Radio className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                </div>
+                <p className="text-[11px] text-ink-500 truncate">
+                  {el.location || 'No location'} · {el.organization || 'No organization'}
+                </p>
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <ToggleChip
+                    label="Verified"
+                    active={!!el.verified}
+                    busy={toggleBusyId === el.id + 'v'}
+                    onClick={async () => {
+                      setToggleBusyId(el.id! + 'v');
+                      try {
+                        await onToggleVerification(el.id!, !el.verified);
+                      } finally {
+                        setToggleBusyId(null);
+                      }
+                    }}
+                  />
+                  <ToggleChip
+                    label="Featured"
+                    active={!!el.isFeatured}
+                    busy={toggleBusyId === el.id + 'f'}
+                    onClick={async () => {
+                      setToggleBusyId(el.id! + 'f');
+                      try {
+                        await onToggleFeatured(el.id!, !el.isFeatured);
+                      } finally {
+                        setToggleBusyId(null);
+                      }
+                    }}
+                  />
+                  <ToggleChip
+                    label="Live"
+                    active={!!el.isLive}
+                    busy={toggleBusyId === el.id + 'l'}
+                    onClick={async () => {
+                      setToggleBusyId(el.id! + 'l');
+                      try {
+                        await onToggleLive(el.id!, !el.isLive);
+                      } finally {
+                        setToggleBusyId(null);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onViewElephant(el)}
+                  title="View profile"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-parchment-100 transition-colors"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setEditingId(el.id!)}
+                  title="Edit"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-pine-700 hover:bg-pine-50 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(el)}
+                  title="Delete"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete ${deleteTarget.name}?`}
+          message="This permanently removes the elephant record along with all of its community posts, and updates any events or followers referencing it. This cannot be undone."
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ToggleChip({ label, active, busy, onClick }: { label: string; active: boolean; busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors flex items-center gap-1 disabled:opacity-50 ${
+        active ? 'bg-pine-700 text-white border-pine-700' : 'bg-transparent text-ink-500 border-parchment-300'
+      }`}
+    >
+      {busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+      {label}
+    </button>
+  );
+}
+
+// -------------------------------------------------------------
+// Elephant Add/Edit Form
+// -------------------------------------------------------------
+
+function ElephantForm({
+  elephant,
+  onCancel,
+  onSaved,
+  onSaveElephant,
+}: {
+  elephant: Elephant | null;
+  onCancel: () => void;
+  onSaved: () => void;
+  onSaveElephant: AdminPanelProps['onSaveElephant'];
+}) {
+  const isEdit = !!elephant;
+  const [form, setForm] = useState(() => {
+    if (!elephant) return { ...EMPTY_ELEPHANT_FORM };
+    return {
       name: elephant.name || '',
       sinhalaName: elephant.sinhalaName || '',
-      otherNames: elephant.otherNames || [],
+      otherNames: (elephant.otherNames || []).join(', '),
       gender: elephant.gender || 'male',
-      type: elephant.type || 'tusker',
+      type: elephant.type || 'elephant',
       dateOfBirth: elephant.dateOfBirth || '',
-      age: elephant.age !== undefined ? elephant.age : '',
+      age: elephant.age !== undefined ? String(elephant.age) : '',
       location: elephant.location || '',
       organization: elephant.organization || '',
       mahout: elephant.mahout || '',
       tusks: elephant.tusks || '',
       physicalCharacteristics: elephant.physicalCharacteristics || '',
       description: elephant.description || '',
-      peraheraParticipation: elephant.peraheraParticipation || [],
-      photos: elephant.photos || [],
-      sources: elephant.sources && elephant.sources.length > 0 ? elephant.sources : [{ title: '', url: '', publisher: '', verifiedDate: '' }],
+      peraheraParticipation: (elephant.peraheraParticipation || []).join(', '),
+      sourcesText: (elephant.sources || []).map((s) => s.title + (s.url ? ` | ${s.url}` : '')).join('\n'),
       verified: elephant.verified ?? true,
       status: elephant.status || 'living',
-      isFeatured: Boolean(elephant.isFeatured),
-      isLive: Boolean(elephant.isLive),
+      isFeatured: !!elephant.isFeatured,
+      isLive: !!elephant.isLive,
       customBadge: elephant.customBadge || '',
-    });
-    setOtherNamesText((elephant.otherNames || []).join(', '));
-    setPeraheraText((elephant.peraheraParticipation || []).join(', '));
-    
-    // Load existing photos into local management array
-    if (elephant.photos && elephant.photos.length > 0) {
-      const loaded: AdminPhotoSelection[] = elephant.photos.map((pUrl, idx) => {
-        const match = elephant.cloudinaryPhotos?.find((cp) => cp.url === pUrl);
-        return {
-          id: `existing_${idx}_${Date.now()}`,
-          file: null,
-          url: pUrl,
-          publicId: match?.publicId || '',
-          status: 'success',
-        };
-      });
-      setPhotoSelections(loaded);
-    } else {
-      setPhotoSelections([]);
-    }
-    
-    setAdminTab('editor');
+    };
+  });
+
+  const [photos, setPhotos] = useState<PhotoSlot[]>(() =>
+    elephant?.photos?.length
+      ? elephant.photos.map((url, idx) => ({
+          url,
+          publicId: elephant.cloudinaryPhotos?.[idx]?.publicId || '',
+          status: 'ready' as const,
+        }))
+      : []
+  );
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
   };
 
-  // Save Elephant with rebuilt-from-scratch concurrent Cloudinary uploader & transactional security
-  const handleSubmitElephant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('==============================================');
-    console.log('[1] Form submission started for Elephant registration');
-    console.log('[2] Current authenticated user UID:', auth.currentUser?.uid || 'no-auth-user');
-    console.log('[3] Current Admin role status:', isAuthenticated ? 'Admin Authenticated' : 'Guest/Public');
-
-    if (!formData.name.trim()) {
-      showError('අලියාගේ නම (Elephant Name) ඇතුළත් කිරීම අනිවාර්යයි.');
-      return;
-    }
-
-    console.log('[4] Validation passed successfully. Selected photos count:', photoSelections.length);
-
-    try {
-      setIsSaving(true);
-      
-      // 1. Process local/pending files to Cloudinary in parallel
-      console.log('[5] Starting concurrent Cloudinary upload for photos...');
-
-      const uploadPromises = photoSelections.map(async (photo, idx) => {
-        // Skip already-successful uploads that have permanent URLs
-        if (photo.status === 'success' && photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:')) {
-          return photo;
-        }
-
-        if (!photo.file && photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:')) {
-          return {
-            ...photo,
-            status: 'success' as const
-          };
-        }
-
-        // Update status to compressing
-        setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing' as const } : p));
-        
-        try {
-          let sourceToUpload: string | File = photo.file || photo.url;
-          if (photo.file) {
-            // Compress client-side to ensure fast uploads
-            sourceToUpload = await compressImageFile(photo.file, 1600, 1600, 0.85);
-          }
-
-          // Update status to uploading
-          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' as const } : p));
-
-          console.log(`[CLOUDINARY] Uploading photo #${idx + 1}...`);
-          const uploadResult = await uploadPhotoToCloudinary(sourceToUpload);
-
-          if (!uploadResult.url || uploadResult.url.startsWith('data:image/') || uploadResult.url.startsWith('blob:')) {
-            throw new Error('Cloudinary response did not contain a valid URL');
-          }
-
-          console.log(`[CLOUDINARY] Photo #${idx + 1} uploaded successfully:`, uploadResult.url);
-
-          const updatedPhoto: AdminPhotoSelection = {
-            ...photo,
-            url: uploadResult.url,
-            publicId: uploadResult.publicId,
-            status: 'success' as const,
-            error: undefined
-          };
-
-          // Update local photo state
-          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? updatedPhoto : p));
-          return updatedPhoto;
-        } catch (err: any) {
-          console.error(`Failed uploading photo #${idx + 1}:`, err);
-          const failedPhoto: AdminPhotoSelection = {
-            ...photo,
-            status: 'failed' as const,
-            error: err.message || 'Upload failed'
-          };
-          setPhotoSelections(prev => prev.map(p => p.id === photo.id ? failedPhoto : p));
-          throw err;
-        }
-      });
-
-      // Execute all uploads in parallel
-      const results = await Promise.all(uploadPromises);
-
-      // Verify that all uploads actually succeeded
-      const failedCount = results.filter(r => r.status !== 'success').length;
-      if (failedCount > 0) {
-        throw new Error('සමහර ඡායාරූප upload කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න හෝ අසාර්ථක ඡායාරූප ඉවත් කරන්න.');
-      }
-
-      console.log('[6] Cloudinary uploads completed successfully. Results:', results.map(r => ({ url: r.url, publicId: r.publicId })));
-
-      // Collect URLs and public_ids
-      const finalPhotosArray = results.map(r => r.url);
-      const finalCloudinaryPhotosArray = results.map(r => ({
-        url: r.url,
-        publicId: r.publicId || ''
-      }));
-
-      const parsedOtherNames = otherNamesText
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      const parsedPeraheras = peraheraText
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      const cleanedSources = formData.sources.filter((s) => s.title && s.title.trim().length > 0);
-
-      // Build safe and fully backwards-compatible payload
-      const payload: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'> = {
-        ...formData,
-        otherNames: parsedOtherNames,
-        peraheraParticipation: parsedPeraheras,
-        photos: finalPhotosArray,
-        cloudinaryPhotos: finalCloudinaryPhotosArray,
-        sources: cleanedSources.length > 0 ? cleanedSources : [{ title: 'Official Custodians Documentation', publisher: 'Verified Registry', verifiedDate: '2024' }],
-      };
-
-      console.log('[7] Sanitizing payload for Firestore...');
-      const sanitizedPayload = validateAndSanitizeFirestorePayload(payload, 'elephant_data_form');
-      console.log('[8] Serialized Payload clean and ready for write. Elephant name:', sanitizedPayload.name);
-
-      console.log('[9] Initiating Firestore write via onSaveElephant...');
-      await onSaveElephant(sanitizedPayload, editingId || undefined);
-      
-      console.log('[10] Final registration result: SUCCESS! Elephant registered/updated in Firestore.');
-      console.log('==============================================');
-      showToast(editingId ? 'පැතිකඩ සාර්ථකව යාවත්කාලීන විය!' : 'නව අලි පැතිකඩ සාර්ථකව ලියාපදිංචි කෙරිණි!');
-      setAdminTab('elephants');
-    } catch (err: any) {
-      console.error('[ERROR] Error in registration pipeline:', err);
-      showError(`Registration error: ${err.message || err}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Quick Verification Toggle
-  const handleQuickVerify = async (elephant: Elephant) => {
-    if (!elephant.id) return;
-    const newStatus = !elephant.verified;
-    try {
-      await onToggleVerification(elephant.id, newStatus);
-      showToast(`${elephant.name} Verification badge ${newStatus ? 'සක්‍රිය කෙරිණි (Verified)' : 'අක්‍රිය කෙරිණි (Unverified)'}`);
-    } catch (err: any) {
-      console.error('Error toggling verification:', err);
-      showError(`Verification update failed: ${err.message || err}`);
-    }
-  };
-
-  // Quick Featured Toggle
-  const handleQuickFeatured = async (elephant: Elephant) => {
-    if (!elephant.id) return;
-    const newStatus = !elephant.isFeatured;
-    try {
-      await onToggleFeatured(elephant.id, newStatus);
-      showToast(`${elephant.name} Featured Story ${newStatus ? 'එක් කරන ලදී (Featured)' : 'ඉවත් කරන ලදී'}`);
-    } catch (err: any) {
-      console.error('Error toggling featured:', err);
-      showError(`Featured update failed: ${err.message || err}`);
-    }
-  };
-
-  // Quick Live Toggle
-  const handleQuickLive = async (elephant: Elephant) => {
-    if (!elephant.id) return;
-    const newStatus = !elephant.isLive;
-    try {
-      await onToggleLive(elephant.id, newStatus);
-      showToast(`${elephant.name} LIVE Status ${newStatus ? 'සක්‍රියයි (LIVE)' : 'අක්‍රියයි'}`);
-    } catch (err: any) {
-      console.error('Error toggling live status:', err);
-      showError(`LIVE status update failed: ${err.message || err}`);
-    }
-  };
-
-  // Trigger Cascade Delete Confirmation Modal
-  const handleTriggerCascadeDelete = (elephant: Elephant) => {
-    setDeletingElephantTarget(elephant);
-  };
-
-  // Confirm Cascade Deletion from Firestore
-  const handleConfirmCascadeDelete = async () => {
-    if (!deletingElephantTarget || !deletingElephantTarget.id) return;
-    try {
-      setIsDeletingCascade(true);
-      const res = await onDeleteElephant(
-        deletingElephantTarget.id,
-        deletingElephantTarget.name,
-        deletingElephantTarget.sinhalaName
-      );
-      
-      const postsCount = res && typeof res === 'object' && 'postsDeleted' in res ? res.postsDeleted : 0;
-      showToast(
-        `"${deletingElephantTarget.name}" සහ සම්බන්ධිත සියලු දත්ත (${postsCount} posts/stories/links) Database එකෙන් ස්ථිරවම ඉවත් කරන ලදී!`
-      );
-      setDeletingElephantTarget(null);
-      await loadCommunityPosts();
-    } catch (err: any) {
-      console.error('Error cascading deleting elephant:', err);
-      const isOffline = err?.code === 'unavailable' || /offline/i.test(err?.message || '');
-      showError(
-        isOffline
-          ? 'දත්ත ඉවත් කිරීමට Firestore සම්බන්ධතාවය අසාර්ථක විය. ඔබගේ අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කර නැවත උත්සාහ කරන්න. (Could not reach the database - please check your internet connection and try again.)'
-          : `දත්ත ඉවත් කිරීමේදී දෝෂයක් මතු විය: ${err.message || err}`
-      );
-    } finally {
-      setIsDeletingCascade(false);
-    }
-  };
-
-  // Moderate / Delete Single Community Post
-  const handleDeletePost = async (postId: string) => {
-    requestConfirm('ඔබට මෙම පරිශීලක පළකිරීම/Story එක database එකෙන් ස්ථිරවම මකා දැමීමට අවශ්‍යද?', async () => {
-      try {
-        await deleteElephantPost(postId);
-        setCommunityPosts((prev) => prev.filter((p) => p.id !== postId));
-        showToast('පළකිරීම සාර්ථකව මකා දමන ලදී.');
-      } catch (err: any) {
-        showError(`Error deleting post: ${err.message || err}`);
-      }
-    });
-  };
-
-  // Reset all follow and like counts to 0 in Firestore
-  const handleResetMetrics = async () => {
-    requestConfirm('ඔබට සියලුම අලි ඇතුන්ගේ Follow count සහ Posts වල Like count 0 කිරීමට අවශ්‍ය බව ස්ථිරද? (Are you sure you want to reset all Follow & Like counts to 0?)', async () => {
-      try {
-        setIsResettingMetrics(true);
-        const { elephantsReset, postsReset } = await resetAllCountsInFirestore();
-        showToast(`සාර්ථකව 0 කරන ලදී! අලි ඇතුන් ${elephantsReset}ක් සහ පළකිරීම් ${postsReset}ක් යාවත්කාලීන විය.`);
-      } catch (err: any) {
-        showError(`Error resetting metrics: ${err.message || err}`);
-      } finally {
-        setIsResettingMetrics(false);
-      }
-    });
-  };
-
-  // Photo handlers & Gallery Uploader
-  const handleGalleryFiles = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    if (fileArray.length === 0) return;
-
-    try {
-      setIsUploadingGallery(true);
-      const compressedB64s = await Promise.all(
-        fileArray.map((file) => compressImageFile(file, 1280, 1280, 0.85))
-      );
-
-      const cloudinaryUrls = await Promise.all(
-        compressedB64s.map((b64) => uploadImageToCloudinary(b64))
-      );
-
-      setFormData((prev) => {
-        const currentPhotos = prev.photos.filter(Boolean);
-        return {
-          ...prev,
-          photos: [...cloudinaryUrls, ...currentPhotos],
-        };
-      });
-
-      showToast(`ඡායාරූප ${fileArray.length} ක් Gallery එකෙන් එක් කරන ලදී!`);
-    } catch (err: any) {
-      console.error('Gallery upload error:', err);
-      showError('ඡායාරූපය upload කිරීමේදී දෝෂයක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
-    } finally {
-      setIsUploadingGallery(false);
-      if (galleryInputRef.current) {
-        galleryInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleSetMainPhoto = (index: number) => {
-    setFormData((prev) => {
-      const selected = prev.photos[index];
-      if (!selected) return prev;
-      const remaining = prev.photos.filter((_, i) => i !== index);
-      return { ...prev, photos: [selected, ...remaining] };
-    });
-    showToast('ප්‍රධාන ඡායාරූපය (Main Cover Photo) ලෙස සකසන ලදී!');
-  };
-
-  const handleAddPhotoField = () => {
-    setFormData((prev) => ({ ...prev, photos: [...prev.photos, ''] }));
-  };
-
-  const handleUpdatePhotoField = (index: number, val: string) => {
-    setFormData((prev) => {
-      const next = [...prev.photos];
-      next[index] = val;
-      return { ...prev, photos: next };
-    });
-  };
-
-  const handleRemovePhotoField = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      photos: prev.photos.filter((_, i) => i !== index),
-    }));
-  };
-
-  // Source handlers
-  const handleAddSource = () => {
-    setFormData((prev) => ({
-      ...prev,
-      sources: [...prev.sources, { title: '', url: '', publisher: '', verifiedDate: '' }],
-    }));
-  };
-
-  const handleUpdateSource = (index: number, field: keyof ElephantSource, val: string) => {
-    setFormData((prev) => {
-      const next = [...prev.sources];
-      next[index] = { ...next[index], [field]: val };
-      return { ...prev, sources: next };
-    });
-  };
-
-  const handleRemoveSource = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      sources: prev.sources.filter((_, i) => i !== index),
-    }));
-  };
-
-  // Event handlers
-  const handleOpenCreateEvent = () => {
-    setEditingEventId(null);
-    setEventFormData({
-      title: '',
-      sinhalaTitle: '',
-      description: '',
-      location: '',
-      date: '',
-      type: 'perahera',
-      participatingElephants: [],
-      isActive: true,
-      coverImage: '',
-    });
-    setEventElephantsText('');
-  };
-
-  const handleOpenEditEvent = (ev: CulturalEvent) => {
-    setEditingEventId(ev.id || null);
-    setEventFormData({
-      title: ev.title,
-      sinhalaTitle: ev.sinhalaTitle || '',
-      description: ev.description,
-      location: ev.location,
-      date: ev.date,
-      type: ev.type,
-      participatingElephants: ev.participatingElephants || [],
-      isActive: ev.isActive,
-      coverImage: ev.coverImage || '',
-    });
-    setEventElephantsText((ev.participatingElephants || []).join(', '));
-  };
-
-  const handleEventCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFilesSelected = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const file = files[0];
-    if (!file.type.startsWith('image/')) return;
+    const newSlots: PhotoSlot[] = Array.from(files).map(() => ({ url: '', publicId: '', status: 'uploading' }));
+    setPhotos((prev) => [...prev, ...newSlots]);
+    const startIndex = photos.length;
 
-    try {
-      setIsCompressingEventCover(true);
-      // Highly compress notification/event image to maximum 800 width/height and 0.65 quality to be super light-weight
-      const compressedB64 = await compressImageFile(file, 800, 800, 0.65);
-      const cloudinaryUrl = await uploadImageToCloudinary(compressedB64);
-      setEventFormData((prev) => ({
-        ...prev,
-        coverImage: cloudinaryUrl,
-      }));
-      showToast('කවරයේ පින්තූරය සාර්ථකව සම්පීඩනය කර (Compressed) සම්බන්ධ කරන ලදී!');
-    } catch (err: any) {
-      console.error('Event cover compression notice:', err);
-      showError('පින්තූරය සකස් කිරීමේදී ගැටලුවක් ඇතිවිය.');
-    } finally {
-      setIsCompressingEventCover(false);
-      if (eventCoverInputRef.current) {
-        eventCoverInputRef.current.value = '';
-      }
-    }
+    await Promise.all(
+      Array.from(files).map(async (file, i) => {
+        const slotIndex = startIndex + i;
+        try {
+          const compressed = await compressImageFile(file, { maxDimension: 1280, quality: 0.82 });
+          const result = await uploadPhotoToCloudinary(compressed);
+          setPhotos((prev) => {
+            const next = [...prev];
+            next[slotIndex] = { url: result.url, publicId: result.publicId, status: 'ready' };
+            return next;
+          });
+        } catch (err) {
+          console.error('Photo upload failed:', err);
+          setPhotos((prev) => {
+            const next = [...prev];
+            next[slotIndex] = { ...next[slotIndex], status: 'error' };
+            return next;
+          });
+        }
+      })
+    );
   };
 
-  const handleSubmitEvent = async (e: React.FormEvent) => {
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!eventFormData.title.trim()) {
-      showError('Event title is required.');
+    setError(null);
+
+    if (!form.name.trim()) {
+      setError('Name is required.');
       return;
     }
-    const parsedElephants = eventElephantsText.split(',').map((s) => s.trim()).filter(Boolean);
-    await onSaveEvent(
-      {
-        ...eventFormData,
-        participatingElephants: parsedElephants,
-      },
-      editingEventId || undefined
-    );
-    showToast(editingEventId ? 'Event updated!' : 'Event created!');
-    handleOpenCreateEvent();
+    if (!form.location.trim()) {
+      setError('Location is required.');
+      return;
+    }
+    if (!form.description.trim()) {
+      setError('Description is required.');
+      return;
+    }
+    if (photos.some((p) => p.status === 'uploading')) {
+      setError('Please wait for all photos to finish uploading.');
+      return;
+    }
+
+    const readyPhotos = photos.filter((p) => p.status === 'ready' && p.url);
+
+    const sources: ElephantSource[] = form.sourcesText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [title, url] = line.split('|').map((s) => s.trim());
+        return { title: title || line, url: url || undefined };
+      });
+
+    const payload: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'> = {
+      name: form.name.trim(),
+      sinhalaName: form.sinhalaName.trim(),
+      otherNames: form.otherNames.split(',').map((s) => s.trim()).filter(Boolean),
+      gender: form.gender,
+      type: form.type,
+      dateOfBirth: form.dateOfBirth.trim(),
+      age: form.age.trim(),
+      location: form.location.trim(),
+      organization: form.organization.trim(),
+      mahout: form.mahout.trim(),
+      tusks: form.tusks.trim(),
+      physicalCharacteristics: form.physicalCharacteristics.trim(),
+      description: form.description.trim(),
+      peraheraParticipation: form.peraheraParticipation.split(',').map((s) => s.trim()).filter(Boolean),
+      photos: readyPhotos.map((p) => p.url),
+      cloudinaryPhotos: readyPhotos.map((p) => ({ url: p.url, publicId: p.publicId })),
+      sources,
+      verified: form.verified,
+      status: form.status,
+      isFeatured: form.isFeatured,
+      isLive: form.isLive,
+      customBadge: form.customBadge.trim(),
+      followerCount: elephant?.followerCount || 0,
+    };
+
+    setSaving(true);
+    try {
+      await onSaveElephant(payload, elephant?.id);
+      onSaved();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Filtered Elephants
-  const filteredElephants = elephants.filter((el) => {
-    if (filterType === 'tusker' && el.type !== 'tusker') return false;
-    if (filterType === 'elephant' && el.type !== 'elephant') return false;
-    if (filterType === 'verified' && !el.verified) return false;
-    if (filterType === 'unverified' && el.verified) return false;
-    if (filterType === 'featured' && !el.isFeatured) return false;
-    if (filterType === 'live' && !el.isLive) return false;
-    if (filterType === 'living' && el.status === 'memorial') return false;
-    if (filterType === 'memorial' && el.status !== 'memorial') return false;
-
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      el.name.toLowerCase().includes(q) ||
-      (el.sinhalaName && el.sinhalaName.includes(q)) ||
-      (el.location && el.location.toLowerCase().includes(q)) ||
-      (el.organization && el.organization.toLowerCase().includes(q))
-    );
-  });
-
-  // Filtered Community Posts
-  const filteredCommunityPosts = communityPosts.filter((post) => {
-    if (postFilter === 'stories' && !post.isStory && !post.isStoryOnly) return false;
-    if (postFilter === 'feed' && post.isStoryOnly) return false;
-
-    if (!postsSearch) return true;
-    const q = postsSearch.toLowerCase();
-    return (
-      post.elephantName.toLowerCase().includes(q) ||
-      post.authorName.toLowerCase().includes(q) ||
-      post.authorUsername.toLowerCase().includes(q) ||
-      (post.caption && post.caption.toLowerCase().includes(q))
-    );
-  });
-
-  // Export JSON Backup
-  const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(elephants, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `alimedia_elephants_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
-  // Export Excel (.xlsx)
-  const handleExportExcel = () => {
-    const flattened = elephants.map((el, i) => ({
-      '#': i + 1,
-      'Elephant Name': el.name,
-      'Sinhala Name': el.sinhalaName || '',
-      'Other Names': (el.otherNames || []).join(', '),
-      'Type': el.type,
-      'Gender': el.gender,
-      'Age': el.age || '',
-      'Date of Birth': el.dateOfBirth || '',
-      'Location': el.location,
-      'Organization': el.organization,
-      'Mahout': el.mahout || '',
-      'Tusks Details': el.tusks || '',
-      'Physical Characteristics': el.physicalCharacteristics || '',
-      'Description': el.description,
-      'Perahera Participation': (el.peraheraParticipation || []).join(', '),
-      'Photos': (el.photos || []).join(', '),
-      'Status': el.status || 'living',
-      'Verified': el.verified ? 'TRUE' : 'FALSE',
-      'Featured': el.isFeatured ? 'TRUE' : 'FALSE',
-      'LIVE': el.isLive ? 'TRUE' : 'FALSE',
-      'Custom Badge': el.customBadge || '',
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(flattened);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Elephants');
-    XLSX.writeFile(wb, `alimedia_elephants_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-
-  // Export CSV (.csv)
-  const handleExportCSV = () => {
-    const flattened = elephants.map((el, i) => ({
-      '#': i + 1,
-      'Elephant Name': el.name,
-      'Sinhala Name': el.sinhalaName || '',
-      'Other Names': (el.otherNames || []).join(', '),
-      'Type': el.type,
-      'Gender': el.gender,
-      'Age': el.age || '',
-      'Date of Birth': el.dateOfBirth || '',
-      'Location': el.location,
-      'Organization': el.organization,
-      'Mahout': el.mahout || '',
-      'Tusks Details': el.tusks || '',
-      'Physical Characteristics': el.physicalCharacteristics || '',
-      'Description': el.description,
-      'Perahera Participation': (el.peraheraParticipation || []).join(', '),
-      'Photos': (el.photos || []).join(', '),
-      'Status': el.status || 'living',
-      'Verified': el.verified ? 'TRUE' : 'FALSE',
-      'Featured': el.isFeatured ? 'TRUE' : 'FALSE',
-      'LIVE': el.isLive ? 'TRUE' : 'FALSE',
-      'Custom Badge': el.customBadge || '',
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(flattened);
-    const csvOutput = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csvOutput], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `alimedia_elephants_export_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // -------------------------------------------------------------
-  // VIEW: Admin Login Screen
-  // -------------------------------------------------------------
-  if (!isAuthenticated) {
-    return (
-      <div className="fixed inset-0 z-50 bg-ink-950 flex items-center justify-center p-4 overflow-y-auto">
-        {/* Ambient registry texture */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.05]"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(245,230,188,0.5) 28px)',
-          }}
-        />
-        <div className="pointer-events-none absolute -top-32 -left-24 w-96 h-96 rounded-full bg-gold-700/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -right-16 w-96 h-96 rounded-full bg-pine-700/25 blur-3xl" />
-
-        <div className="relative w-full max-w-md animate-fadeIn">
-          <div className="bg-parchment-100 w-full rounded-2xl p-7 sm:p-9 shadow-2xl border border-gold-800/20 text-ink-900">
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="absolute -top-3 -right-3 w-9 h-9 rounded-full bg-ink-900 text-parchment-100 hover:bg-ink-800 flex items-center justify-center shadow-lg transition-colors cursor-pointer"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            {/* Seal + Identity */}
-            <div className="flex flex-col items-center text-center gap-3 mb-7">
-              <div className="w-16 h-16 rounded-full registry-seal p-[3px] flex items-center justify-center">
-                <div className="w-full h-full rounded-full bg-parchment-50 p-1.5 flex items-center justify-center overflow-hidden">
-                  <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold-700">Field Registry</p>
-                <h2 className="font-display text-2xl font-semibold tracking-tight text-ink-900 mt-1">
-                  අලි Media Admin
-                </h2>
-                <p className="text-xs text-ink-400 font-medium mt-1">පාලක මණ්ඩල ප්‍රවේශය · Restricted Access</p>
-              </div>
-            </div>
-
-            <div className="ledger-rule text-gold-800/30 mb-6" />
-
-            {/* Error Alert */}
-            {authError && (
-              <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-xs font-bold text-red-700 animate-fadeIn">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.15em] flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-gold-600" />
-                  <span>Admin Username / Email</span>
-                </label>
-                <input
-                  type="text"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="admin@alimedia.com"
-                  required
-                  className="w-full px-4 py-3 bg-parchment-50 border border-gold-800/20 rounded-lg text-sm font-medium text-ink-900 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 focus:outline-none transition-shadow"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.15em] flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-gold-600" />
-                  <span>Password (මුරපදය)</span>
-                </label>
-                <input
-                  type="password"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="••••••••••••"
-                  required
-                  className="w-full px-4 py-3 bg-parchment-50 border border-gold-800/20 rounded-lg text-sm font-medium text-ink-900 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 focus:outline-none transition-shadow"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3.5 bg-ink-900 hover:bg-ink-800 text-parchment-50 rounded-lg text-sm font-bold tracking-wide shadow-lg shadow-ink-950/30 transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Lock className="w-4 h-4 text-gold-400" />
-                <span>Enter Console (ප්‍රවේශ වන්න)</span>
-              </button>
-            </form>
-
-            <p className="text-center text-[10px] text-ink-400/70 font-medium mt-6 tracking-wide">
-              Sri Lankan Domesticated Elephant &amp; Tusker Registry
-            </p>
-          </div>
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5 animate-fadeIn pb-8">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onCancel} className="w-9 h-9 rounded-xl bg-white border border-parchment-200 flex items-center justify-center text-ink-600 hover:bg-parchment-100 transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h1 className="font-display text-lg font-bold text-ink-950">{isEdit ? `Edit ${elephant!.name}` : 'Add New Elephant'}</h1>
+          <p className="text-xs text-ink-500">{isEdit ? 'Update this record in the registry.' : 'Create a new record in the registry.'}</p>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-3 py-2.5 rounded-xl flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Photos */}
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-3">
+        <h3 className="text-sm font-bold text-ink-950">Photos</h3>
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+          {photos.map((p, idx) => (
+            <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-parchment-100 border border-parchment-200">
+              {p.status === 'uploading' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
+                </div>
+              )}
+              {p.status === 'error' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-red-50">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+              )}
+              {p.url && <img src={p.url} alt="" className="w-full h-full object-cover" />}
+              <button
+                type="button"
+                onClick={() => removePhoto(idx)}
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="aspect-square rounded-xl border-2 border-dashed border-parchment-300 flex flex-col items-center justify-center gap-1 text-ink-400 hover:text-pine-600 hover:border-pine-400 transition-colors"
+          >
+            <ImagePlus className="w-5 h-5" />
+            <span className="text-[10px] font-bold">Add</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFilesSelected(e.target.files)}
+          />
+        </div>
+        <p className="text-[10.5px] text-ink-500">Photos are compressed and uploaded securely to Cloudinary automatically.</p>
+      </div>
+
+      {/* Core identity */}
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-4">
+        <h3 className="text-sm font-bold text-ink-950">Identity</h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Name" required>
+            <input className={inputCls} value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="e.g. Indiraja" />
+          </Field>
+          <Field label="Sinhala Name">
+            <input className={`${inputCls} font-sinhala`} value={form.sinhalaName} onChange={(e) => setField('sinhalaName', e.target.value)} placeholder="e.g. ඉන්දිරාජා" />
+          </Field>
+          <Field label="Other Names (comma separated)">
+            <input className={inputCls} value={form.otherNames} onChange={(e) => setField('otherNames', e.target.value)} />
+          </Field>
+          <Field label="Custom Badge">
+            <input className={inputCls} value={form.customBadge} onChange={(e) => setField('customBadge', e.target.value)} placeholder="e.g. National Treasure" />
+          </Field>
+          <Field label="Gender">
+            <select className={inputCls} value={form.gender} onChange={(e) => setField('gender', e.target.value as Gender)}>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </Field>
+          <Field label="Type">
+            <select className={inputCls} value={form.type} onChange={(e) => setField('type', e.target.value as ElephantType)}>
+              <option value="elephant">Elephant</option>
+              <option value="tusker">Tusker</option>
+            </select>
+          </Field>
+          <Field label="Date of Birth">
+            <input className={inputCls} value={form.dateOfBirth} onChange={(e) => setField('dateOfBirth', e.target.value)} placeholder="YYYY-MM-DD or approx." />
+          </Field>
+          <Field label="Age">
+            <input className={inputCls} value={form.age} onChange={(e) => setField('age', e.target.value)} />
+          </Field>
+          <Field label="Status">
+            <select className={inputCls} value={form.status} onChange={(e) => setField('status', e.target.value as 'living' | 'memorial')}>
+              <option value="living">Living</option>
+              <option value="memorial">Memorial</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      {/* Location & care */}
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-4">
+        <h3 className="text-sm font-bold text-ink-950">Location & Care</h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Location" required>
+            <input className={inputCls} value={form.location} onChange={(e) => setField('location', e.target.value)} placeholder="e.g. Kandy" />
+          </Field>
+          <Field label="Organization">
+            <input className={inputCls} value={form.organization} onChange={(e) => setField('organization', e.target.value)} placeholder="e.g. Sri Dalada Maligawa" />
+          </Field>
+          <Field label="Mahout">
+            <input className={inputCls} value={form.mahout} onChange={(e) => setField('mahout', e.target.value)} />
+          </Field>
+          <Field label="Tusks">
+            <input className={inputCls} value={form.tusks} onChange={(e) => setField('tusks', e.target.value)} />
+          </Field>
+          <Field label="Physical Characteristics">
+            <input className={inputCls} value={form.physicalCharacteristics} onChange={(e) => setField('physicalCharacteristics', e.target.value)} />
+          </Field>
+          <Field label="Perahera Participation (comma separated)">
+            <input className={inputCls} value={form.peraheraParticipation} onChange={(e) => setField('peraheraParticipation', e.target.value)} />
+          </Field>
+        </div>
+      </div>
+
+      {/* Description & sources */}
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-4">
+        <h3 className="text-sm font-bold text-ink-950">Description & Sources</h3>
+        <Field label="Description" required>
+          <textarea
+            className={`${inputCls} min-h-[110px] resize-y`}
+            value={form.description}
+            onChange={(e) => setField('description', e.target.value)}
+            placeholder="Comprehensive background, sacred history, guardianship…"
+          />
+        </Field>
+        <Field label="Sources (one per line: Title | URL)">
+          <textarea
+            className={`${inputCls} min-h-[70px] resize-y`}
+            value={form.sourcesText}
+            onChange={(e) => setField('sourcesText', e.target.value)}
+            placeholder={'Department of Wildlife Conservation | https://...'}
+          />
+        </Field>
+      </div>
+
+      {/* Flags */}
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-3">
+        <h3 className="text-sm font-bold text-ink-950">Flags</h3>
+        <div className="flex flex-wrap gap-2">
+          <CheckboxChip label="Verified" checked={form.verified} onChange={(v) => setField('verified', v)} />
+          <CheckboxChip label="Featured" checked={form.isFeatured} onChange={(v) => setField('isFeatured', v)} />
+          <CheckboxChip label="Live now" checked={form.isLive} onChange={(v) => setField('isLive', v)} />
+        </div>
+      </div>
+
+      <div className="flex gap-2 sticky bottom-0 bg-parchment-50 py-3 -mx-1 px-1">
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl bg-parchment-200 text-ink-800 text-sm font-bold hover:bg-parchment-300 transition-colors">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex-[2] py-2.5 rounded-xl bg-pine-800 hover:bg-pine-900 text-parchment-50 text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+        >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+          {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Elephant'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CheckboxChip({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+        checked ? 'bg-pine-700 text-white border-pine-700' : 'bg-transparent text-ink-500 border-parchment-300'
+      }`}
+    >
+      {checked && <Check className="w-3.5 h-3.5" />}
+      {label}
+    </button>
+  );
+}
+
+// -------------------------------------------------------------
+// Events Tab — full CRUD
+// -------------------------------------------------------------
+
+function EventsTab({
+  elephants,
+  events,
+  onSaveEvent,
+  onDeleteEvent,
+}: {
+  elephants: Elephant[];
+  events: CulturalEvent[];
+  onSaveEvent: AdminPanelProps['onSaveEvent'];
+  onDeleteEvent: AdminPanelProps['onDeleteEvent'];
+}) {
+  const [editingId, setEditingId] = useState<string | 'new' | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CulturalEvent | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const editingEvent = editingId && editingId !== 'new' ? events.find((e) => e.id === editingId) || null : null;
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await onDeleteEvent(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      alert(`Failed to delete: ${err?.message || err}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (editingId) {
+    return (
+      <EventForm
+        event={editingEvent}
+        onCancel={() => setEditingId(null)}
+        onSaved={() => setEditingId(null)}
+        onSaveEvent={onSaveEvent}
+      />
     );
   }
 
-  // -------------------------------------------------------------
-  // VIEW: Authenticated Full Admin Dashboard
-  // -------------------------------------------------------------
   return (
-    <div className="fixed inset-0 z-50 bg-parchment-200 flex flex-col sm:flex-row text-ink-900 animate-fadeIn">
-      {/* Toast feedback */}
-      {statusMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#12231B] text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn border border-pine-500/30">
-          <CheckCircle2 className="w-4 h-4 text-pine-400" />
-          <span>{statusMessage}</span>
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-xl font-bold text-ink-950">Events & Notices</h1>
+          <p className="text-xs text-ink-500 mt-0.5">{events.length} entr{events.length === 1 ? 'y' : 'ies'} published.</p>
         </div>
-      )}
-
-      {/* Error Banner (replaces window.alert so failures are always visible) */}
-      {errorMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-lg bg-red-600 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-start gap-2.5 text-xs font-bold animate-fadeIn border border-red-400/40">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span className="flex-1 leading-relaxed">{errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => setErrorMessage(null)}
-            className="flex-shrink-0 p-0.5 hover:bg-parchment-50/20 rounded-md transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Generic Confirmation Modal (replaces window.confirm so it always renders) */}
-      {confirmDialog && (
-        <div className="fixed inset-0 z-[65] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-parchment-50 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-5 animate-scaleUp">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-gold-100 text-gold-600 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <h3 className="font-display text-sm font-extrabold text-[#12231B] leading-snug">
-                {confirmDialog.message}
-              </h3>
-            </div>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmDialog(null)}
-                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
-              >
-                අවලංගු කරන්න (Cancel)
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const action = confirmDialog.onConfirm;
-                  setConfirmDialog(null);
-                  await action();
-                }}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer"
-              >
-                තහවුරු කරන්න (Confirm)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cascading Deletion Confirmation Modal */}
-      {deletingElephantTarget && (
-        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-parchment-50 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-display text-lg font-black text-red-950">
-                  ස්ථිර මකා දැමීම (Cascade Delete)
-                </h3>
-                <p className="text-xs text-red-700 font-medium">
-                  මෙම ක්‍රියාව ආපසු හැරවිය නොහැක (Permanent Action)
-                </p>
-              </div>
-            </div>
-
-            {/* Elephant Target Info */}
-            <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
-              <img
-                src={deletingElephantTarget.photos?.[0] || PRESET_ELEPHANT_PHOTOS[0]}
-                alt={deletingElephantTarget.name}
-                className="w-14 h-14 rounded-xl object-cover border border-red-200"
-              />
-              <div className="min-w-0">
-                <h4 className="font-extrabold text-sm text-red-950 truncate">
-                  {deletingElephantTarget.name}
-                </h4>
-                <p className="text-xs text-red-800 font-sinhala truncate">
-                  {deletingElephantTarget.sinhalaName || 'අලි පැතිකඩ'}
-                </p>
-                <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-200 text-red-900">
-                  ID: {deletingElephantTarget.id}
-                </span>
-              </div>
-            </div>
-
-            {/* Cascade Cleanup Warning List */}
-            <div className="space-y-2 text-xs text-zinc-700 bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
-              <p className="font-bold text-zinc-900 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-red-600" />
-                <span>පහත සියලුම දත්ත Cloud Firestore වෙතින් ස්ථිරවම මකා දැමෙනු ඇත:</span>
-              </p>
-              <ul className="space-y-1.5 pl-5 list-disc text-zinc-600 text-[11px]">
-                <li><b>Master Elephant Profile:</b> අලියාගේ සියලු ජීව දත්ත හා විස්තර</li>
-                <li><b>Community Posts & Stories:</b> මෙම අලියාට අදාළව පරිශීලකයින් පළ කළ සියලු ඡායාරූප, Stories හා Posts</li>
-                <li><b>Followers:</b> සියලු Users ගේ Followed Elephant lists වලින් ඉවත් කිරීම</li>
-                <li><b>Cultural Events:</b> පෙරහැර සහභාගීත්ව සටහන් වලින් ඉවත් කිරීම</li>
-              </ul>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingElephantTarget(null)}
-                disabled={isDeletingCascade}
-                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
-              >
-                අවලංගු කරන්න (Cancel)
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmCascadeDelete}
-                disabled={isDeletingCascade}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center gap-2"
-              >
-                {isDeletingCascade ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>මකා දමමින් පවතී...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>ඔව්, සියල්ල මකා දමන්න (Delete All)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Remove User Confirmation Modal */}
-      {deletingUserTarget && (
-        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-parchment-50 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-red-200 space-y-5 animate-scaleUp">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-display text-lg font-black text-red-950">
-                  පරිශීලකයා ඉවත් කරන්න (Remove User)
-                </h3>
-                <p className="text-xs text-red-700 font-medium">
-                  මෙම ක්‍රියාව ආපසු හැරවිය නොහැක (Permanent Action)
-                </p>
-              </div>
-            </div>
-
-            {/* User Target Info */}
-            <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-14 h-14 rounded-xl overflow-hidden border border-red-200 bg-red-100 flex-shrink-0">
-                {deletingUserTarget.photoURL ? (
-                  <img
-                    src={deletingUserTarget.photoURL}
-                    alt={deletingUserTarget.displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-full h-full p-2.5 text-red-400" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <h4 className="font-extrabold text-sm text-red-950 truncate">
-                  {deletingUserTarget.displayName}
-                </h4>
-                <p className="text-xs text-red-800 font-mono truncate">
-                  {deletingUserTarget.username} • {deletingUserTarget.email || 'No email'}
-                </p>
-                <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-200 text-red-900">
-                  UID: {deletingUserTarget.uid?.slice(0, 12)}...
-                </span>
-              </div>
-            </div>
-
-            {/* Cleanup Warning List */}
-            <div className="space-y-2 text-xs text-zinc-700 bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
-              <p className="font-bold text-zinc-900 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-red-600" />
-                <span>පහත සියලුම දත්ත Cloud Firestore වෙතින් ස්ථිරවම මකා දැමෙනු ඇත:</span>
-              </p>
-              <ul className="space-y-1.5 pl-5 list-disc text-zinc-600 text-[11px]">
-                <li><b>User Profile:</b> පරිශීලකයාගේ ගිණුම් තොරතුරු, Bio සහ Photo</li>
-                <li><b>Community Posts & Stories:</b> මොහු පළ කළ සියලු ඡායාරූප, Stories හා Posts</li>
-                <li><b>Follows:</b> ඔහු Follow කළ අලි ඇතුන්ගේ Follower ගණන් යාවත්කාලීන කිරීම</li>
-              </ul>
-              <p className="text-[11px] text-zinc-500 pt-1">
-                Note: මෙයින් Firestore Profile එක සහ අදාළ දත්ත පමණක් ඉවත් වේ. පරිශීලකයාට නැවත Sign in වීමට හැකිය (නව ගිණුමක් ලෙස).
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingUserTarget(null)}
-                disabled={isDeletingUser}
-                className="px-4 py-2.5 rounded-xl border border-zinc-300 text-zinc-700 text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
-              >
-                අවලංගු කරන්න (Cancel)
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteUser}
-                disabled={isDeletingUser}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center gap-2"
-              >
-                {isDeletingUser ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>ඉවත් කරමින් පවතී...</span>
-                  </>
-                ) : (
-                  <>
-                    <UserX className="w-4 h-4" />
-                    <span>ඔව්, පරිශීලකයා ඉවත් කරන්න (Remove User)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------------------------------------------- */}
-      {/* DESKTOP SIDEBAR (Registry Navigation)                     */}
-      {/* -------------------------------------------------------- */}
-      <aside className="hidden sm:flex sm:flex-col sm:w-64 sm:h-screen sm:sticky sm:top-0 bg-ink-950 text-parchment-100 flex-shrink-0">
-        {/* Seal & Identity */}
-        <div className="px-5 pt-6 pb-5 flex items-center gap-3 border-b border-white/10">
-          <div className="w-11 h-11 rounded-full registry-seal p-[2.5px] flex items-center justify-center flex-shrink-0">
-            <div className="w-full h-full rounded-full bg-parchment-50 p-1 flex items-center justify-center overflow-hidden">
-              <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
-            </div>
-          </div>
-          <div className="min-w-0">
-            <h1 className="font-display text-base font-semibold tracking-tight text-parchment-50 truncate">
-              Admin Console
-            </h1>
-            <p className="text-[10px] text-gold-400 font-bold uppercase tracking-[0.15em] truncate">Super Admin</p>
-          </div>
-        </div>
-
-        {/* Nav groups */}
-        <nav className="flex-1 overflow-y-auto admin-scroll px-3 py-4 space-y-5">
-          <div className="space-y-1">
-            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Dashboard</p>
-            <button
-              onClick={() => setAdminTab('overview')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
-                adminTab === 'overview'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>සාරාංශය (Overview)</span>
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Registry</p>
-            <button
-              onClick={() => setAdminTab('elephants')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                adminTab === 'elephants'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <span className="flex items-center gap-2.5"><Crown className="w-4 h-4" /><span>අලි නාමාවලිය</span></span>
-              <span className="text-[10px] opacity-70">{elephants.length}</span>
-            </button>
-            <button
-              onClick={handleOpenCreateForm}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
-                adminTab === 'editor'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-pine-300 hover:bg-parchment-50/5'
-              }`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>{editingId ? 'සංස්කරණය (Edit)' : 'නව අලියෙකු (Add Profile)'}</span>
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Community</p>
-            <button
-              onClick={() => setAdminTab('posts')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                adminTab === 'posts'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <span className="flex items-center gap-2.5"><MessageSquare className="w-4 h-4" /><span>පළකිරීම් & Stories</span></span>
-              <span className="text-[10px] opacity-70">{communityPosts.length}</span>
-            </button>
-            <button
-              onClick={() => setAdminTab('events')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                adminTab === 'events'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <span className="flex items-center gap-2.5"><Calendar className="w-4 h-4" /><span>පෙරහැර වැඩසටහන්</span></span>
-              <span className="text-[10px] opacity-70">{events.length}</span>
-            </button>
-            <button
-              onClick={() => setAdminTab('users')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                adminTab === 'users'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <span className="flex items-center gap-2.5"><Users className="w-4 h-4" /><span>පරිශීලකයින්</span></span>
-              <span className="text-[10px] opacity-70">{registeredUsers.length}</span>
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            <p className="px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-parchment-100/35 mb-1.5">Tools</p>
-            <button
-              onClick={() => setAdminTab('bulk_import')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
-                adminTab === 'bulk_import'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Bulk Import</span>
-            </button>
-            <button
-              onClick={() => setAdminTab('database')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
-                adminTab === 'database'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              <span>Backup & DB</span>
-            </button>
-            <button
-              onClick={() => setAdminTab('cloudinary')}
-              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 ${
-                adminTab === 'cloudinary'
-                  ? 'bg-gold-500 text-ink-950 shadow-sm'
-                  : 'text-parchment-100/80 hover:bg-parchment-50/5'
-              }`}
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Cloudinary</span>
-            </button>
-          </div>
-        </nav>
-
-        {/* Sidebar footer actions */}
-        <div className="px-3 py-4 border-t border-white/10 space-y-1.5">
-          <p className="px-2.5 text-[10px] text-parchment-100/40 font-mono truncate mb-1">{DEFAULT_ADMIN_EMAIL}</p>
-          <button
-            onClick={onClose}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold text-parchment-100/80 hover:bg-parchment-50/5 transition-colors cursor-pointer"
-          >
-            <Eye className="w-4 h-4 text-pine-300" />
-            <span>View Website</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* -------------------------------------------------------- */}
-      {/* MOBILE TOP BAR                                            */}
-      {/* -------------------------------------------------------- */}
-      <header className="sm:hidden sticky top-0 z-40 bg-ink-950 text-parchment-100 px-3 py-2.5 shadow-lg flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-full registry-seal p-[2px] flex items-center justify-center flex-shrink-0">
-            <div className="w-full h-full rounded-full bg-parchment-50 p-0.5 flex items-center justify-center overflow-hidden">
-              <img src={LOGO_URL} alt="අලි Media Logo" className="w-full h-full object-contain" />
-            </div>
-          </div>
-          <h1 className="font-display text-sm font-semibold tracking-tight truncate">Admin Console</h1>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg bg-parchment-50/10 hover:bg-parchment-50/15 text-parchment-100 transition-colors cursor-pointer"
-            title="View Website"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-300 transition-colors cursor-pointer"
-            title="Logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* MOBILE SCROLLABLE TAB STRIP */}
-      <div className="sm:hidden sticky top-[49px] z-30 bg-parchment-100 border-b border-gold-800/15 shadow-sm px-2">
-        <div className="flex items-center gap-1.5 overflow-x-auto py-2 no-scrollbar scroll-smooth">
-          <button
-            onClick={() => setAdminTab('overview')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'overview' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>Overview</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('elephants')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'elephants' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <Crown className="w-3.5 h-3.5" />
-            <span>අලි ({elephants.length})</span>
-          </button>
-          <button
-            onClick={handleOpenCreateForm}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'editor' ? 'bg-ink-950 text-parchment-50' : 'bg-gold-500 text-ink-950'
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{editingId ? 'Edit' : 'Add'}</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('posts')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'posts' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Posts ({communityPosts.length})</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('events')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'events' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Events ({events.length})</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('users')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'users' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Users ({registeredUsers.length})</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('bulk_import')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'bulk_import' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Import</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('database')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'database' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span>Backup</span>
-          </button>
-          <button
-            onClick={() => setAdminTab('cloudinary')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
-              adminTab === 'cloudinary' ? 'bg-ink-950 text-parchment-50' : 'bg-parchment-200 text-ink-600'
-            }`}
-          >
-            <UploadCloud className="w-3.5 h-3.5" />
-            <span>Cloudinary</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setEditingId('new')}
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-pine-800 hover:bg-pine-900 text-parchment-50 text-sm font-bold transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Event
+        </button>
       </div>
 
-      {/* Content column wrapper */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto admin-scroll">
-
-      {/* Main Admin Content Container */}
-      <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 space-y-6 flex-1">
-        {/* ============================================================= */}
-        {/* CATEGORY 1: OVERVIEW & DASHBOARD                              */}
-        {/* ============================================================= */}
-        {adminTab === 'overview' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 sm:gap-3">
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-zinc-400 uppercase">Total Elephants</div>
-                <div className="text-2xl font-black text-[#12231B] mt-1">{elephants.length}</div>
-                <div className="text-[10px] text-pine-700 font-semibold mt-0.5">ලියාපදිංචි අලි</div>
+      {events.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-parchment-200 p-10 text-center">
+          <p className="text-sm text-ink-500">No events published yet.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {events.map((ev) => (
+            <div key={ev.id} className="bg-white rounded-2xl border border-parchment-200 p-3.5 flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl bg-parchment-200 overflow-hidden shrink-0 flex items-center justify-center text-ink-300">
+                {ev.coverImage ? <img src={ev.coverImage} alt="" className="w-full h-full object-cover" /> : <CalendarDays className="w-6 h-6" />}
               </div>
-
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-gold-600 uppercase flex items-center gap-1">
-                  <Crown className="w-3 h-3" />
-                  <span>Tuskers</span>
-                </div>
-                <div className="text-2xl font-black text-gold-900 mt-1">
-                  {elephants.filter((e) => e.type === 'tusker').length}
-                </div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">දළ ඇතුන්</div>
-              </div>
-
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-pine-600 uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Verified</span>
-                </div>
-                <div className="text-2xl font-black text-pine-900 mt-1">
-                  {elephants.filter((e) => e.verified).length}
-                </div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">සත්‍යාපිත ලාංඡන</div>
-              </div>
-
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-purple-600 uppercase flex items-center gap-1">
-                  <Star className="w-3 h-3" />
-                  <span>Featured</span>
-                </div>
-                <div className="text-2xl font-black text-purple-900 mt-1">
-                  {elephants.filter((e) => e.isFeatured).length}
-                </div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">Stories Spotlight</div>
-              </div>
-
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-blue-600 uppercase flex items-center gap-1">
-                  <MessageSquare className="w-3 h-3" />
-                  <span>Posts & Stories</span>
-                </div>
-                <div className="text-2xl font-black text-blue-900 mt-1">
-                  {communityPosts.length}
-                </div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පරිශීලක පළකිරීම්</div>
-              </div>
-
-              <div className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs">
-                <div className="text-[10px] font-extrabold text-rose-600 uppercase flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  <span>Events</span>
-                </div>
-                <div className="text-2xl font-black text-rose-900 mt-1">{events.length}</div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">පෙරහැර වැඩසටහන්</div>
-              </div>
-
-              <div
-                onClick={() => setAdminTab('users')}
-                className="bg-parchment-50 p-3.5 rounded-2xl border border-zinc-200 shadow-2xs cursor-pointer hover:border-pine-300 transition-colors"
-              >
-                <div className="text-[10px] font-extrabold text-teal-600 uppercase flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  <span>Users</span>
-                </div>
-                <div className="text-2xl font-black text-teal-900 mt-1">{registeredUsers.length}</div>
-                <div className="text-[10px] text-zinc-400 font-semibold mt-0.5">ලියාපදිංචි පරිශීලකයින්</div>
-              </div>
-            </div>
-
-            {/* Quick Action Shortcuts Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                onClick={handleOpenCreateForm}
-                className="p-4 bg-pine-700 hover:bg-pine-800 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
-              >
-                <div>
-                  <h4 className="font-extrabold text-sm flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    <span>නව අලියෙකු ලියාපදිංචි කරන්න</span>
-                  </h4>
-                  <p className="text-xs text-pine-100 mt-1">
-                    ඡායාරූප, ඇත් දළ විස්තර, පෙරහැර සහභාගීත්ව සටහන් එක් කරන්න.
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-pine-200 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => setAdminTab('bulk_import')}
-                className="p-4 bg-gold-500 hover:bg-gold-600 text-zinc-950 rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
-              >
-                <div>
-                  <h4 className="font-extrabold text-sm flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Excel / CSV තොග ඇතුළත් කිරීම</span>
-                  </h4>
-                  <p className="text-xs text-gold-950/80 mt-1">
-                    අලි ඇතුන් 100+ ක් එකවර ක්ෂණිකව upload කරන්න.
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-zinc-900 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => setAdminTab('posts')}
-                className="p-4 bg-[#12231B] hover:bg-pine-950 text-white rounded-2xl shadow-sm text-left transition-all cursor-pointer flex items-center justify-between group"
-              >
-                <div>
-                  <h4 className="font-extrabold text-sm flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    <span>පරිශීලක Posts Moderation</span>
-                  </h4>
-                  <p className="text-xs text-zinc-300 mt-1">
-                    පරිශීලකයින් submit කළ ඡායාරූප පරීක්ෂා කර පාලනය කරන්න.
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-
-            {/* Real-time Website Activity & Active Duration Tracking */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-4">
-                <div>
-                  <h3 className="font-display font-black text-base text-[#12231B] flex items-center gap-2">
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pine-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-pine-500"></span>
-                    </span>
-                    <span>සජීවී වෙබ් අඩවි පරිශීලකයින් (Real-time Website Traffic)</span>
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-medium mt-0.5">
-                    වෙබ් අඩවියට පැමිණෙන පුද්ගලයින් සහ ඔවුන් රැඳී සිටින කාලය (Live presence tracking)
-                  </p>
-                </div>
-                
-                {/* Reset Metrics Button */}
-                <button
-                  onClick={handleResetMetrics}
-                  disabled={isResettingMetrics}
-                  className="px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all self-start sm:self-center"
-                >
-                  {isResettingMetrics ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Database className="w-3.5 h-3.5" />
-                  )}
-                  <span>සියලු මිනුම් 0 කරන්න (Reset Counts to 0)</span>
-                </button>
-              </div>
-
-              {/* Traffic Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-pine-100 flex items-center justify-center text-pine-800 font-black text-lg">
-                    {visitors.filter((v) => isVisitorOnline(v.lastActive)).length}
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Active Now</div>
-                    <div className="text-xs font-bold text-pine-950">දැනට ක්‍රියාකාරී පිරිස</div>
-                  </div>
-                </div>
-
-                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-800 font-black text-lg">
-                    {visitors.length}
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Total Visitors Today</div>
-                    <div className="text-xs font-bold text-blue-950">මුළු පැමිණීම් සංඛ්‍යාව</div>
-                  </div>
-                </div>
-
-                <div className="bg-[#FBF6E8] border border-zinc-200 p-4 rounded-2xl flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-gold-100 flex items-center justify-center text-gold-800 font-black text-sm">
-                    {(() => {
-                      const activeOnes = visitors.filter((v) => isVisitorOnline(v.lastActive));
-                      if (activeOnes.length === 0) return '0s';
-                      const sumMs = activeOnes.reduce((acc, v) => {
-                        const start = v.sessionStart?.seconds || Date.now() / 1000;
-                        const last = v.lastActive?.seconds || Date.now() / 1000;
-                        return acc + (last - start);
-                      }, 0);
-                      const avgSec = Math.floor(sumMs / activeOnes.length);
-                      return avgSec < 60 ? `${avgSec}s` : `${Math.floor(avgSec / 60)}m`;
-                    })()}
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Avg. Session Time</div>
-                    <div className="text-xs font-bold text-gold-950">සාමාන්‍ය රැඳී සිටි කාලය</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detailed Active Users list */}
-              <div className="border border-zinc-200/80 rounded-2xl overflow-hidden">
-                <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200 flex justify-between text-[10px] font-extrabold uppercase text-zinc-400 tracking-wider">
-                  <span>පරිශීලකයා (Visitor Detail)</span>
-                  <span>රැඳී සිටි කාලය (Active Duration)</span>
-                </div>
-                <div className="divide-y divide-zinc-100 max-h-60 overflow-y-auto">
-                  {visitors.length === 0 ? (
-                    <div className="p-4 text-center text-zinc-400 text-xs italic">
-                      No visitors tracked yet.
-                    </div>
-                  ) : (
-                    visitors
-                      .slice()
-                      .sort((a, b) => {
-                        // Put active ones first, then newest sessions
-                        const aOnline = isVisitorOnline(a.lastActive) ? 1 : 0;
-                        const bOnline = isVisitorOnline(b.lastActive) ? 1 : 0;
-                        if (aOnline !== bOnline) return bOnline - aOnline;
-                        const aTime = a.sessionStart?.seconds || 0;
-                        const bTime = b.sessionStart?.seconds || 0;
-                        return bTime - aTime;
-                      })
-                      .map((visitor) => {
-                        const online = isVisitorOnline(visitor.lastActive);
-                        return (
-                          <div
-                            key={visitor.id}
-                            className="px-4 py-3 flex items-center justify-between hover:bg-pine-50/20 transition-colors text-xs"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${online ? 'bg-pine-500 animate-pulse' : 'bg-zinc-300'}`} />
-                              <div className="min-w-0">
-                                <div className="font-extrabold text-[#12231B] truncate flex items-center gap-1.5">
-                                  <span>{visitor.displayName}</span>
-                                  {visitor.email !== 'Guest' && (
-                                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-pine-50 text-pine-800 border border-pine-200/60 font-mono">
-                                      Gmail Connected
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-zinc-400 truncate">
-                                  {visitor.email} • ID: {visitor.id}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="text-right flex-shrink-0">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-zinc-100 font-extrabold font-mono text-[11px] text-zinc-700">
-                                <Clock className="w-3 h-3 text-zinc-400" />
-                                <span>{formatActiveDuration(visitor.sessionStart, visitor.lastActive)}</span>
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Elephants Quick Peek */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-display font-black text-base text-[#12231B]">
-                    අලුත්ම අලි පැතිකඩ (Recent Profiles)
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-medium">
-                    පද්ධතියේ ලියාපදිංචි කර ඇති ප්‍රමුඛ අලි ඇතුන්
-                  </p>
-                </div>
-                <button
-                  onClick={() => setAdminTab('elephants')}
-                  className="text-xs font-extrabold text-pine-700 hover:underline flex items-center gap-1"
-                >
-                  <span>සියල්ල බලන්න (View All)</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {elephants.slice(0, 6).map((el) => (
-                  <div
-                    key={el.id}
-                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 flex items-center justify-between gap-3 hover:bg-pine-50/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={(el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0]}
-                        alt={el.name}
-                        className="w-11 h-11 rounded-xl object-cover border border-zinc-200 flex-shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-[#12231B] truncate flex items-center gap-1">
-                          <span>{el.name}</span>
-                          {el.verified && <ShieldCheck className="w-3 h-3 text-pine-600" />}
-                        </div>
-                        <p className="text-[11px] text-zinc-500 font-sinhala truncate">
-                          {el.sinhalaName || el.organization || 'Sri Lanka'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => handleOpenEditForm(el)}
-                        className="p-1.5 text-zinc-500 hover:text-pine-700 rounded-lg hover:bg-parchment-50 transition-colors"
-                        title="Edit"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleTriggerCascadeDelete(el)}
-                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-parchment-50 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 2: ELEPHANT DIRECTORY MANAGEMENT                      */}
-        {/* ============================================================= */}
-        {adminTab === 'elephants' && (
-          <div className="space-y-4 animate-fadeIn">
-            {/* Search and Filters Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="නම, ස්ථානය හෝ විහාරය සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                />
-              </div>
-
-              {/* Filter chips (Mobile friendly scroll) */}
-              <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto no-scrollbar py-0.5">
-                {[
-                  { id: 'all', label: `All (${elephants.length})` },
-                  { id: 'tusker', label: 'Tuskers (ඇත්තු)' },
-                  { id: 'elephant', label: 'Elephants (අලින්)' },
-                  { id: 'verified', label: 'Verified' },
-                  { id: 'unverified', label: 'Unverified' },
-                  { id: 'featured', label: 'Featured Stories' },
-                  { id: 'live', label: 'LIVE' },
-                  { id: 'memorial', label: 'Memorial' },
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setFilterType(f.id as any)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                      filterType === f.id
-                        ? 'bg-[#12231B] text-white'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Mobile View: Responsive Elephant Cards */}
-            <div className="block lg:hidden space-y-3">
-              {filteredElephants.length === 0 ? (
-                <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs">
-                  කිසිදු හීලෑ අලියෙකු හමු නොවීය.
-                </div>
-              ) : (
-                filteredElephants.map((el) => {
-                  const isTusker = el.type === 'tusker';
-                  const photo = (el.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0];
-
-                  return (
-                    <div
-                      key={el.id}
-                      className="bg-parchment-50 rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
-                    >
-                      {/* Top Row: Photo + Name + Type */}
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={photo}
-                          alt={el.name}
-                          className="w-14 h-14 rounded-2xl object-cover border border-zinc-200 flex-shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-extrabold text-sm text-[#12231B] truncate">
-                              {el.name}
-                            </h4>
-                            {el.verified && (
-                              <ShieldCheck className="w-3.5 h-3.5 text-pine-600 fill-pine-600/20" />
-                            )}
-                          </div>
-                          {el.sinhalaName && (
-                            <p className="text-xs text-pine-800 font-sinhala truncate">
-                              {el.sinhalaName}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                isTusker ? 'bg-gold-100 text-gold-900' : 'bg-pine-100 text-pine-900'
-                              }`}
-                            >
-                              {isTusker ? 'Tusker (ඇතා)' : 'Elephant (අලියා)'}
-                            </span>
-                            <span className="text-[10px] text-zinc-400">
-                              {el.age ? `${el.age} yrs` : 'N/A'} • {el.location || 'SL'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quick Toggles Row (Touch optimized) */}
-                      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-zinc-100">
-                        {/* Verified Toggle */}
-                        <button
-                          onClick={() => handleQuickVerify(el)}
-                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
-                            el.verified
-                              ? 'bg-pine-100 text-pine-900 border border-pine-300'
-                              : 'bg-zinc-100 text-zinc-500'
-                          }`}
-                        >
-                          <ShieldCheck className="w-3 h-3" />
-                          <span>{el.verified ? 'Verified' : 'Verify'}</span>
-                        </button>
-
-                        {/* Featured Toggle */}
-                        <button
-                          onClick={() => handleQuickFeatured(el)}
-                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
-                            el.isFeatured
-                              ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                              : 'bg-zinc-100 text-zinc-500'
-                          }`}
-                        >
-                          <Star className="w-3 h-3" />
-                          <span>{el.isFeatured ? 'Featured' : 'Feature'}</span>
-                        </button>
-
-                        {/* Live Toggle */}
-                        <button
-                          onClick={() => handleQuickLive(el)}
-                          className={`py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
-                            el.isLive
-                              ? 'bg-rose-100 text-rose-900 border border-rose-300'
-                              : 'bg-zinc-100 text-zinc-500'
-                          }`}
-                        >
-                          <Radio className="w-3 h-3" />
-                          <span>{el.isLive ? 'LIVE' : 'Go LIVE'}</span>
-                        </button>
-                      </div>
-
-                      {/* Card Action Buttons (Edit, View, Delete) */}
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
-                        <button
-                          onClick={() => onViewElephant(el)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-xs font-bold text-zinc-700 flex items-center justify-center gap-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View</span>
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditForm(el)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-pine-50 hover:bg-pine-100 text-xs font-bold text-pine-800 flex items-center justify-center gap-1.5"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleTriggerCascadeDelete(el)}
-                          className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center"
-                          title="Cascade Delete Elephant"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Desktop View: High-density Table */}
-            <div className="hidden lg:block bg-parchment-50 rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#FBF6E8] border-b border-zinc-200 text-zinc-500 font-extrabold uppercase tracking-wider">
-                    <tr>
-                      <th className="py-3.5 px-4">Elephant Profile</th>
-                      <th className="py-3.5 px-3">Type & Age</th>
-                      <th className="py-3.5 px-3">Organization / Location</th>
-                      <th className="py-3.5 px-3 text-center">Verification Badge</th>
-                      <th className="py-3.5 px-3 text-center">Featured Story</th>
-                      <th className="py-3.5 px-3 text-center">LIVE Badge</th>
-                      <th className="py-3.5 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {filteredElephants.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-8 text-center text-zinc-400">
-                          කිසිදු හීලෑ අලියෙකු හමු නොවීය.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredElephants.map((elephant) => {
-                        const isTusker = elephant.type === 'tusker';
-                        const photo = (elephant.photos?.find((p) => typeof p === 'string' && p.trim().length > 0)) || PRESET_ELEPHANT_PHOTOS[0];
-
-                        return (
-                          <tr key={elephant.id} className="hover:bg-zinc-50/80 transition-colors">
-                            {/* Profile (Photo + Name) */}
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-full overflow-hidden bg-zinc-100 border-2 border-zinc-200 flex-shrink-0">
-                                  <img
-                                    src={photo}
-                                    alt={elephant.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="font-extrabold text-sm text-[#12231B] truncate flex items-center gap-1.5">
-                                    <span>{elephant.name}</span>
-                                    {elephant.verified && (
-                                      <ShieldCheck className="w-3.5 h-3.5 text-pine-600 fill-pine-600/20" />
-                                    )}
-                                  </div>
-                                  {elephant.sinhalaName && (
-                                    <p className="text-[11px] text-pine-800 font-sinhala truncate">
-                                      {elephant.sinhalaName}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Type & Age */}
-                            <td className="py-3 px-3">
-                              <div className="space-y-1">
-                                <span
-                                  className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    isTusker ? 'bg-gold-100 text-gold-900' : 'bg-pine-100 text-pine-900'
-                                  }`}
-                                >
-                                  {isTusker ? 'Tusker (ඇතා)' : 'Elephant (අලියා)'}
-                                </span>
-                                <div className="text-[11px] text-zinc-400 font-mono">
-                                  {elephant.age ? `${elephant.age} Years` : 'Age: N/A'}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Organization & Location */}
-                            <td className="py-3 px-3">
-                              <div className="text-zinc-700 font-semibold truncate max-w-[180px]">
-                                {elephant.organization || 'තොරතුරු නොමැත'}
-                              </div>
-                              <div className="text-[11px] text-zinc-400 truncate">
-                                {elephant.location || 'Sri Lanka'}
-                              </div>
-                            </td>
-
-                            {/* Verification Badge Toggle */}
-                            <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={() => handleQuickVerify(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
-                                  elephant.verified
-                                    ? 'bg-pine-100 text-pine-900 border border-pine-300 hover:bg-pine-200'
-                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
-                                }`}
-                              >
-                                <ShieldCheck className="w-3 h-3" />
-                                <span>{elephant.verified ? 'Verified (සත්‍යාපිතයි)' : 'Unverified'}</span>
-                              </button>
-                            </td>
-
-                            {/* Featured Story Toggle */}
-                            <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={() => handleQuickFeatured(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
-                                  elephant.isFeatured
-                                    ? 'bg-purple-100 text-purple-900 border border-purple-300 hover:bg-purple-200'
-                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
-                                }`}
-                              >
-                                <Star className="w-3 h-3" />
-                                <span>{elephant.isFeatured ? 'Featured Story' : 'Standard'}</span>
-                              </button>
-                            </td>
-
-                            {/* LIVE Badge Toggle */}
-                            <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={() => handleQuickLive(elephant)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer shadow-2xs ${
-                                  elephant.isLive
-                                    ? 'bg-rose-100 text-rose-900 border border-rose-300 animate-pulse hover:bg-rose-200'
-                                    : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'
-                                }`}
-                              >
-                                <Radio className="w-3 h-3" />
-                                <span>{elephant.isLive ? 'LIVE ACTIVE' : 'Offline'}</span>
-                              </button>
-                            </td>
-
-                            {/* Actions (View / Edit / Delete) */}
-                            <td className="py-3 px-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => onViewElephant(elephant)}
-                                  className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
-                                  title="View on Website"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleOpenEditForm(elephant)}
-                                  className="p-1.5 text-pine-700 hover:text-pine-900 hover:bg-pine-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit Elephant"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleTriggerCascadeDelete(elephant)}
-                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Permanently Delete and Cascade Clean DB"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 3: PROFILE EDITOR (ADD / EDIT FORM)                   */}
-        {/* ============================================================= */}
-        {adminTab === 'editor' && (
-          <form onSubmit={handleSubmitElephant} className="space-y-6 animate-fadeIn pb-12">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-parchment-50 p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-2xs">
-              <div>
-                <h3 className="font-display text-base sm:text-lg font-black text-[#12231B] flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-gold-500" />
-                  <span>
-                    {editingId ? `සංස්කරණය: ${formData.name || 'Elephant'}` : 'නව හීලෑ අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
-                  </span>
-                </h3>
-                <p className="text-xs text-zinc-500 font-medium">
-                  ශ්‍රී ලාංකීය හීලෑ අලි ඇතුන්ගේ තොරතුරු නිවැරදිව ඇතුළත් කරන්න.
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-ink-950 truncate">{ev.title}</p>
+                <p className="text-[11px] text-ink-500 truncate">
+                  {ev.type} · {ev.location || 'No location'} {ev.date ? `· ${ev.date}` : ''}
                 </p>
+                {!ev.isActive && <span className="text-[10px] font-bold text-ink-400">Inactive</span>}
               </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setAdminTab('elephants')}
-                  className="flex-1 sm:flex-initial px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  අවලංගු කරන්න (Cancel)
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setEditingId(ev.id!)} className="w-8 h-8 rounded-lg flex items-center justify-center text-pine-700 hover:bg-pine-50 transition-colors">
+                  <Pencil className="w-4 h-4" />
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 sm:flex-initial px-5 py-2 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>සුරකිමින්...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>{editingId ? 'යාවත්කාලීන කරන්න' : 'සුරකින්න (Save)'}</span>
-                    </>
-                  )}
+                <button onClick={() => setDeleteTarget(ev)} className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
-
-            {/* Section 1: Basic Identity */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <User className="w-4 h-4 text-pine-700" />
-                <span>1. මූලික අනන්‍යතාව (Basic Identity & Profile Badges)</span>
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Primary English Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">
-                    Primary Name (English)*
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Indiraja / Kandula"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Sinhala Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">
-                    Sinhala Script Name (සිංහල නම)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.sinhalaName || ''}
-                    onChange={(e) => setFormData({ ...formData, sinhalaName: e.target.value })}
-                    placeholder="e.g. ඉන්දිරාජා"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none font-sinhala"
-                  />
-                </div>
-
-                {/* Type: Tusker vs Elephant */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Type (වර්ගය)</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as ElephantType })}
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  >
-                    <option value="tusker">Tusker (ඇතා - දළ සහිත)</option>
-                    <option value="elephant">Elephant (අලියා / ඇලියා)</option>
-                  </select>
-                </div>
-
-                {/* Gender */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Gender (ස්ත්‍රී / පුරුෂ භාවය)</label>
-                  <select
-                    value={formData.gender}
-                    onChange={(e) => setFormData({ ...formData, gender: e.target.value as Gender })}
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  >
-                    <option value="male">Male (පිරිමි)</option>
-                    <option value="female">Female (ගැහැණු / ඇතින්න)</option>
-                  </select>
-                </div>
-
-                {/* Age */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Age / වයස (Years)</label>
-                  <input
-                    type="text"
-                    value={formData.age || ''}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                    placeholder="e.g. 45 or 40-45"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Status */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Status (තත්ත්වය)</label>
-                  <select
-                    value={formData.status || 'living'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  >
-                    <option value="living">Living (ජීවත්වන)</option>
-                    <option value="memorial">Memorial (අභාවප්‍රාප්ත / අනුස්මරණ)</option>
-                  </select>
-                </div>
-
-                {/* Custom Badge */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Custom Title / Badge</label>
-                  <input
-                    type="text"
-                    value={formData.customBadge || ''}
-                    onChange={(e) => setFormData({ ...formData, customBadge: e.target.value })}
-                    placeholder="e.g. National Treasure / මංගල හස්තිරාජයා"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Other Aliases */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-bold text-zinc-700">Other Aliases / වෙනත් නම් (Comma Separated)</label>
-                  <input
-                    type="text"
-                    value={otherNamesText}
-                    onChange={(e) => setOtherNamesText(e.target.value)}
-                    placeholder="e.g. Maligawa Indiraja, Raja, Baby"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Guardianship & Physical Characteristics */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-pine-700" />
-                <span>2. භාරකාරත්වය හා දේහ ලක්ෂණ (Guardianship & Physical Attributes)</span>
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Organization */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">
-                    Custodian / Temple / Organization (භාරකාර විහාරය / ආයතනය)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.organization}
-                    onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                    placeholder="e.g. Sri Dalada Maligawa (ශ්‍රී දළදා මාළිගාව)"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Location */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය / දිස්ත්‍රික්කය)</label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="e.g. Kandy / මහනුවර"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Mahout */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Mahout / ඇත්ගොව්වා</label>
-                  <input
-                    type="text"
-                    value={formData.mahout || ''}
-                    onChange={(e) => setFormData({ ...formData, mahout: e.target.value })}
-                    placeholder="e.g. K. G. Sunil / අනුර මහතා"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Tusks Details */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-700">Tusk Characteristics (ඇත් දළ විස්තර)</label>
-                  <input
-                    type="text"
-                    value={formData.tusks || ''}
-                    onChange={(e) => setFormData({ ...formData, tusks: e.target.value })}
-                    placeholder="e.g. දිගු සවිමත් යුගල දළ (Twin symmetrical curved tusks)"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Physical Characteristics */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-bold text-zinc-700">
-                    Physical Marks & Height (ශාරීරික ලක්ෂණ සහ උස)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.physicalCharacteristics || ''}
-                    onChange={(e) => setFormData({ ...formData, physicalCharacteristics: e.target.value })}
-                    placeholder="e.g. උස අඩි 9.5, තේජවන්ත පෙනුම, පුළුල් කුම්භස්ථලය, සමමිතික පිටිකොන්ද"
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-
-                {/* Detailed Description */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-bold text-zinc-700">
-                    Comprehensive Biography & Sacred History (සම්පූර්ණ ඉතිහාසය හා පසුබිම)*
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="හීලෑ අලියාගේ ඓතිහාසික පසුබිම, පෙරහැර මංගල්‍යයන්හි ධාතු කරඬුව වැඩමවීම, පුදසත්කාර සහ සංස්කෘතික වටිනාකම..."
-                    className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Perahera Participation */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-pine-700" />
-                <span>3. පෙරහැර සහභාගීත්වය (Perahera Participation Checklist)</span>
-              </h4>
-
-              {/* Quick Select Chips */}
-              <div className="space-y-2">
-                <div className="text-[11px] font-bold text-zinc-500">ප්‍රධාන පෙරහැර ඉක්මන් තේරීම:</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {POPULAR_PERAHERAS.map((p) => {
-                    const cleanP = p.split('(')[0].trim();
-                    const isSelected = peraheraText.includes(cleanP) || peraheraText.includes(p);
-                    return (
-                      <button
-                        type="button"
-                        key={p}
-                        onClick={() => {
-                          if (isSelected) {
-                            setPeraheraText((prev) =>
-                              prev
-                                .split(',')
-                                .map((s) => s.trim())
-                                .filter((s) => !s.includes(cleanP))
-                                .join(', ')
-                            );
-                          } else {
-                            setPeraheraText((prev) => (prev ? `${prev}, ${p}` : p));
-                          }
-                        }}
-                        className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-pine-800 text-white shadow-xs'
-                            : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                        }`}
-                      >
-                        {isSelected ? '✓ ' : '+ '} {p}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-700">
-                  Selected Peraheras (Custom or Comma Separated)
-                </label>
-                <input
-                  type="text"
-                  value={peraheraText}
-                  onChange={(e) => setPeraheraText(e.target.value)}
-                  placeholder="Kandy Esala Perahera, Kelaniya Duruthu Perahera..."
-                  className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Section 4: Rebuilt Photo Gallery & Streamlined Concurrent Uploader */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-pine-700" />
-                    <span>4. ඡායාරූප ගැලරිය (Photo Gallery & Parallel Uploads)*</span>
-                  </h4>
-                  <p className="text-[11px] text-zinc-500 font-medium">
-                    ඡායාරූප තෝරන්න. ඒවා ස්වයංක්‍රීයව compressed වී, Save ක්ලික් කළ විට parallel ලෙස Cloudinary වෙත ආරක්ෂිතව upload වේ.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    className="hidden"
-                    id="admin-photo-picker"
-                    onChange={(e) => {
-                      if (e.target.files) {
-                        const newFiles = Array.from(e.target.files) as File[];
-                        const additions: AdminPhotoSelection[] = newFiles.map(file => ({
-                          id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                          file,
-                          url: URL.createObjectURL(file),
-                          publicId: '',
-                          status: 'pending'
-                        }));
-                        setPhotoSelections(prev => [...prev, ...additions]);
-                        e.target.value = ''; // Reset input so same file can be re-selected
-                      }
-                    }}
-                  />
-                  <label
-                    htmlFor="admin-photo-picker"
-                    className="px-4 py-2 bg-pine-700 hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Select Device Photos</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = prompt('Enter image secure URL:');
-                      if (url && url.trim()) {
-                        const manualAddition: AdminPhotoSelection = {
-                          id: `manual_${Date.now()}`,
-                          file: null,
-                          url: url.trim(),
-                          publicId: '',
-                          status: 'success'
-                        };
-                        setPhotoSelections(prev => [...prev, manualAddition]);
-                      }
-                    }}
-                    className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    + Add External URL
-                  </button>
-                </div>
-              </div>
-
-              {/* Photo Thumbnails List */}
-              {photoSelections.length === 0 ? (
-                <div className="border-2 border-dashed border-zinc-200 rounded-2xl p-8 text-center text-zinc-400 text-xs">
-                  <ImageIcon className="w-8 h-8 mx-auto mb-2 text-zinc-300 animate-pulse" />
-                  <span>ඡායාරූප කිසිවක් තෝරා නැත. (No photos selected yet.)</span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
-                  {photoSelections.map((photo, idx) => (
-                    <div
-                      key={photo.id}
-                      className={`relative group rounded-2xl overflow-hidden border aspect-square shadow-2xs flex flex-col justify-between transition-all ${
-                        photo.status === 'failed'
-                          ? 'border-red-300 bg-red-50'
-                          : photo.status === 'success'
-                          ? 'border-zinc-200 bg-zinc-50'
-                          : 'border-gold-300 bg-gold-50 animate-pulse'
-                      }`}
-                    >
-                      {/* Image Preview */}
-                      <div className="relative flex-1 w-full h-full">
-                        <img
-                          src={photo.url || PRESET_ELEPHANT_PHOTOS[0]}
-                          alt={`Elephant image preview ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-
-                        {/* Status Overlay Badge */}
-                        <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white p-1 text-[10px] text-center font-bold flex items-center justify-center gap-1">
-                          {photo.status === 'pending' && (
-                            <span className="text-zinc-300">Pending Upload</span>
-                          )}
-                          {photo.status === 'compressing' && (
-                            <span className="text-gold-300 flex items-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> Compressing...
-                            </span>
-                          )}
-                          {photo.status === 'uploading' && (
-                            <span className="text-pine-300 flex items-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> Uploading...
-                            </span>
-                          )}
-                          {photo.status === 'success' && (
-                            <span className="text-pine-400 flex items-center gap-1">
-                              ✓ Safe (Cloudinary)
-                            </span>
-                          )}
-                          {photo.status === 'failed' && (
-                            <span className="text-red-400 font-extrabold">Failed</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Cover Photo Indicator */}
-                      {idx === 0 && (
-                        <span className="absolute top-2 left-2 bg-pine-800/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md">
-                          COVER PHOTO
-                        </span>
-                      )}
-
-                      {/* Action buttons overlay */}
-                      <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
-                        {idx !== 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPhotoSelections(prev => {
-                                const next = [...prev];
-                                const [target] = next.splice(idx, 1);
-                                return [target, ...next];
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-parchment-50 text-zinc-900 rounded-lg text-[10px] font-extrabold shadow-md hover:bg-pine-50 cursor-pointer"
-                          >
-                            Make Cover
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPhotoSelections(prev => prev.filter(p => p.id !== photo.id));
-                          }}
-                          className="p-1.5 bg-red-600 text-white rounded-lg text-xs shadow-md hover:bg-red-700 cursor-pointer"
-                          title="Remove photo"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Detailed error indicator if failed */}
-                      {photo.status === 'failed' && photo.error && (
-                        <div className="absolute inset-0 bg-red-950/95 p-2 flex flex-col justify-between text-white text-[10px] text-left">
-                          <div className="overflow-y-auto max-h-16 font-medium text-red-200">
-                            Error: {photo.error}
-                          </div>
-                          <div className="flex gap-1.5 mt-1">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                // Trigger upload specifically for this failed photo
-                                if (!photo.file && (!photo.url || photo.url.startsWith('blob:'))) return;
-                                setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'compressing', error: undefined } : p));
-                                try {
-                                  let source: string | File = photo.file || photo.url;
-                                  if (photo.file) {
-                                    source = await compressImageFile(photo.file, 1600, 1600, 0.85);
-                                  }
-                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'uploading' } : p));
-                                  
-                                  const secureUrl = await uploadImageToCloudinary(source);
-                                  if (!secureUrl || secureUrl.startsWith('data:image/')) {
-                                    throw new Error('Cloudinary upload returned invalid response');
-                                  }
-
-                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? {
-                                    ...p,
-                                    url: secureUrl,
-                                    publicId: '',
-                                    status: 'success'
-                                  } : p));
-                                } catch (e: any) {
-                                  setPhotoSelections(prev => prev.map(p => p.id === photo.id ? {
-                                    ...p,
-                                    status: 'failed',
-                                    error: e.message || 'Retry failed'
-                                  } : p));
-                                }
-                              }}
-                              className="flex-1 py-1 bg-gold-500 hover:bg-gold-600 text-zinc-950 font-black rounded-md text-center cursor-pointer"
-                            >
-                              Retry
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPhotoSelections(prev => prev.filter(p => p.id !== photo.id));
-                              }}
-                              className="px-2 py-1 bg-parchment-50/20 hover:bg-parchment-50/30 rounded-md font-bold cursor-pointer"
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Section 5: Sources & Verified Documentation */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-pine-700" />
-                  <span>5. මූලාශ්‍ර සහ ලේඛන (Sources & References)</span>
-                </h4>
-                <button
-                  type="button"
-                  onClick={handleAddSource}
-                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  + Add Source Reference
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {formData.sources.map((src, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 bg-[#FBF6E8] rounded-2xl border border-zinc-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Source Title (e.g. Wildlife Dept Registry)"
-                      value={src.title}
-                      onChange={(e) => handleUpdateSource(idx, 'title', e.target.value)}
-                      className="px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Publisher / Official Custodian"
-                      value={src.publisher || ''}
-                      onChange={(e) => handleUpdateSource(idx, 'publisher', e.target.value)}
-                      className="px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Year / Verified Date (e.g. 2024)"
-                        value={src.verifiedDate || ''}
-                        onChange={(e) => handleUpdateSource(idx, 'verifiedDate', e.target.value)}
-                        className="flex-1 px-3 py-2 bg-parchment-50 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                      />
-                      {formData.sources.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSource(idx)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Sticky Mobile / Desktop Action Bar */}
-            <div className="sticky bottom-4 z-30 bg-[#12231B] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-pine-500/30 animate-fadeIn">
-              <div className="text-xs font-bold truncate">
-                {editingId ? `සංස්කරණය: ${formData.name}` : 'නව අලි පැතිකඩක් ලියාපදිංචි කිරීම'}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAdminTab('elephants')}
-                  className="px-4 py-2 bg-parchment-50/10 hover:bg-parchment-50/20 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  අවලංගු කරන්න
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 bg-pine-500 hover:bg-pine-400 text-zinc-950 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                  <span>{editingId ? 'යාවත්කාලීන කරන්න' : 'සුරකින්න (Save)'}</span>
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 4: COMMUNITY POSTS & STORIES MODERATION               */}
-        {/* ============================================================= */}
-        {adminTab === 'posts' && (
-          <div className="space-y-4 animate-fadeIn">
-            {/* Header & Controls */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-4 rounded-2xl border border-zinc-200 shadow-2xs">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={postsSearch}
-                  onChange={(e) => setPostsSearch(e.target.value)}
-                  placeholder="අලියාගේ නම, පරිශීලකයා සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl">
-                  <button
-                    onClick={() => setPostFilter('all')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'all' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
-                    }`}
-                  >
-                    All ({communityPosts.length})
-                  </button>
-                  <button
-                    onClick={() => setPostFilter('stories')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'stories' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
-                    }`}
-                  >
-                    Stories Only
-                  </button>
-                  <button
-                    onClick={() => setPostFilter('feed')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                      postFilter === 'feed' ? 'bg-[#12231B] text-white' : 'text-zinc-600'
-                    }`}
-                  >
-                    Feed Posts
-                  </button>
-                </div>
-
-                <button
-                  onClick={loadCommunityPosts}
-                  disabled={isLoadingPosts}
-                  className="p-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-zinc-700"
-                  title="Refresh Posts"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingPosts ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Posts Grid */}
-            {isLoadingPosts ? (
-              <div className="p-12 text-center text-zinc-400 flex flex-col items-center justify-center gap-2">
-                <Loader2 className="w-6 h-6 animate-spin text-pine-700" />
-                <span className="text-xs font-medium">පරිශීලක පළකිරීම් load වෙමින් පවතී...</span>
-              </div>
-            ) : filteredCommunityPosts.length === 0 ? (
-              <div className="bg-parchment-50 rounded-2xl p-12 text-center border border-zinc-200 text-zinc-400 text-xs">
-                පළකිරීම් කිසිවක් හමු නොවීය.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredCommunityPosts.map((post) => (
-                  <div
-                    key={post.id}
-                    className="bg-parchment-50 rounded-2xl overflow-hidden border border-zinc-200 shadow-2xs flex flex-col justify-between"
-                  >
-                    <div>
-                      {/* Photo Thumbnail */}
-                      <div className="relative aspect-4/3 bg-zinc-100 overflow-hidden">
-                        <img
-                          src={post.photoUrl || PRESET_ELEPHANT_PHOTOS[0]}
-                          alt={post.elephantName}
-                          className="w-full h-full object-cover"
-                        />
-                        {post.isStoryOnly ? (
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-purple-900/90 text-purple-200 backdrop-blur-xs">
-                            STORY ONLY
-                          </span>
-                        ) : post.isStory ? (
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-pine-900/90 text-pine-200 backdrop-blur-xs">
-                            FEED + STORY
-                          </span>
-                        ) : (
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-zinc-900/90 text-zinc-200 backdrop-blur-xs">
-                            FEED
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-3.5 space-y-2">
-                        {/* Target Elephant */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-pine-800 flex items-center gap-1">
-                            <Crown className="w-3.5 h-3.5 text-gold-500" />
-                            <span>{post.elephantName}</span>
-                          </span>
-                          <span className="text-[10px] text-zinc-400 flex items-center gap-1">
-                            <Heart className="w-3 h-3 text-red-500 fill-red-500" />
-                            <span>{post.likesCount || 0}</span>
-                          </span>
-                        </div>
-
-                        {/* Caption */}
-                        {post.caption && (
-                          <p className="text-xs text-zinc-700 line-clamp-2">
-                            "{post.caption}"
-                          </p>
-                        )}
-
-                        {/* Author Info */}
-                        <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
-                          <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden">
-                            {post.authorPhotoURL && post.authorPhotoURL.trim().length > 0 ? (
-                              <img
-                                src={post.authorPhotoURL}
-                                alt={post.authorName}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <User className="w-full h-full p-1 text-zinc-500" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[11px] font-bold text-zinc-800 truncate">
-                              {post.authorName}
-                            </div>
-                            <div className="text-[10px] text-zinc-400 font-mono truncate">
-                              {post.authorUsername}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Delete Action Footer */}
-                    <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
-                      <span className="text-[10px] text-zinc-400">Post ID: {post.id?.slice(0, 8)}...</span>
-                      <button
-                        onClick={() => post.id && handleDeletePost(post.id)}
-                        className="px-3 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 5: CULTURAL & PERAHERA EVENTS                         */}
-        {/* ============================================================= */}
-        {adminTab === 'events' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* Event Form */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-pine-700" />
-                <span>
-                  {editingEventId ? 'පෙරහැර නිවේදනය සංස්කරණය' : 'නව පෙරහැර / සංස්කෘතික නිවේදනයක් පළ කිරීම'}
-                </span>
-              </h3>
-
-              <form onSubmit={handleSubmitEvent} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Event/Notification Title (English)*</label>
-                    <input
-                      type="text"
-                      required
-                      value={eventFormData.title}
-                      onChange={(e) => setEventFormData({ ...eventFormData, title: e.target.value })}
-                      placeholder="e.g. Kandy Esala Perahera 2025"
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Sinhala Title (සිංහල නම)</label>
-                    <input
-                      type="text"
-                      value={eventFormData.sinhalaTitle || ''}
-                      onChange={(e) => setEventFormData({ ...eventFormData, sinhalaTitle: e.target.value })}
-                      placeholder="e.g. මහනුවර ඇසළ මහා පෙරහැර මංගල්‍යය"
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none font-sinhala"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Notification Type (නිවේදන වර්ගය)</label>
-                    <select
-                      value={eventFormData.type}
-                      onChange={(e) => setEventFormData({ ...eventFormData, type: e.target.value as any })}
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    >
-                      <option value="perahera">Perahera / Festival (පෙරහැර මංගල්‍ය)</option>
-                      <option value="ceremony">Cultural Ceremony (සංස්කෘතික උත්සව)</option>
-                      <option value="conservation">Conservation Alert (සංරක්ෂණ තොරතුරු)</option>
-                      <option value="general">General Notice (පොදු නිවේදන)</option>
-                      <option value="update">Platform Update (නව යාවත්කාලීන කිරීම්)</option>
-                      <option value="alert">Urgent Alert (හදිසි නිවේදන)</option>
-                      <option value="news">Latest News (පුවත් හා වාර්තා)</option>
-                      <option value="other">Other (වෙනත්)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Date & Schedule (දිනය)</label>
-                    <input
-                      type="text"
-                      value={eventFormData.date}
-                      onChange={(e) => setEventFormData({ ...eventFormData, date: e.target.value })}
-                      placeholder="e.g. August 10 - 20, 2025"
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">Location (ස්ථානය)</label>
-                    <input
-                      type="text"
-                      value={eventFormData.location}
-                      onChange={(e) => setEventFormData({ ...eventFormData, location: e.target.value })}
-                      placeholder="e.g. Kandy / මහනුවර"
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700">
-                      Participating Elephants (සහභාගී වන අලි ඇතුන් - Comma separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={eventElephantsText}
-                      onChange={(e) => setEventElephantsText(e.target.value)}
-                      placeholder="Indiraja, Myan Kumara, Vasana, Kandula..."
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Cover Image Input Area with high compression feedback */}
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-bold text-zinc-700">Cover Image / කවරයේ පින්තූරය (compressed file/link)</label>
-                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                      <button
-                        type="button"
-                        disabled={isCompressingEventCover}
-                        onClick={() => eventCoverInputRef.current?.click()}
-                        className="px-4 py-2 bg-pine-50 hover:bg-pine-100 border border-pine-200 text-pine-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                      >
-                        {isCompressingEventCover ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <ImageIcon className="w-4 h-4" />
-                        )}
-                        <span>Upload & Compress Image</span>
-                      </button>
-                      <input
-                        type="file"
-                        ref={eventCoverInputRef}
-                        onChange={handleEventCoverFile}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <div className="flex-1 w-full">
-                        <input
-                          type="text"
-                          value={eventFormData.coverImage || ''}
-                          onChange={(e) => setEventFormData({ ...eventFormData, coverImage: e.target.value })}
-                          placeholder="Or paste direct image URL (නැතහොත් පින්තූරයේ URL එක මෙහි ඇතුලත් කරන්න)"
-                          className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {eventFormData.coverImage && (
-                      <div className="mt-2.5 relative inline-block rounded-2xl overflow-hidden border border-zinc-200 bg-[#FBF6E8] p-1.5">
-                        <img
-                          src={eventFormData.coverImage}
-                          alt="Cover Preview"
-                          className="h-24 w-auto object-cover rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setEventFormData({ ...eventFormData, coverImage: '' })}
-                          className="absolute top-2.5 right-2.5 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full transition-all cursor-pointer"
-                          title="Remove Cover Image"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        <div className="text-[10px] text-zinc-500 mt-1 px-1 font-mono">
-                          Optimized Size: {eventFormData.coverImage.startsWith('data:') ? `${Math.round(eventFormData.coverImage.length * 0.75 / 1024)} KB` : 'External Link'}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-bold text-zinc-700">Description / Message (නිවේදන විස්තරය)*</label>
-                    <textarea
-                      rows={3}
-                      required
-                      value={eventFormData.description}
-                      onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
-                      placeholder="පෙරහැර පිළිබඳ විශේෂ සටහන්, නව පුවත් හෝ යාවත්කාලීන කිරීම් පිළිබඳ සවිස්තරාත්මක තොරතුරු මෙහි ඇතුළත් කරන්න..."
-                      className="w-full px-3.5 py-2.5 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  {editingEventId && (
-                    <button
-                      type="button"
-                      onClick={handleOpenCreateEvent}
-                      className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-bold hover:bg-zinc-200"
-                    >
-                      Clear / New
-                    </button>
-                  )}
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{editingEventId ? 'යාවත්කාලීන කරන්න' : 'නිවේදනය පළ කරන්න (Publish)'}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Events List */}
-            <div className="space-y-3">
-              <h4 className="font-extrabold text-sm text-[#12231B]">
-                පළ කර ඇති පෙරහැර හා පොදු නිවේදන ({events.length})
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {events.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="bg-parchment-50 rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden flex flex-col justify-between"
-                  >
-                    <div>
-                      {/* Notification Cover Image if exists */}
-                      {ev.coverImage && (
-                        <div className="w-full h-32 bg-zinc-100 overflow-hidden border-b border-zinc-200">
-                          <img
-                            src={ev.coverImage}
-                            alt={ev.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
-                      
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h5 className="font-extrabold text-sm text-[#12231B]">{ev.title}</h5>
-                            {ev.sinhalaTitle && (
-                              <p className="text-xs text-pine-800 font-sinhala">{ev.sinhalaTitle}</p>
-                            )}
-                          </div>
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-250 shrink-0 uppercase tracking-wider">
-                            {ev.type}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed">{ev.description}</p>
-                        <div className="text-[11px] text-zinc-500 font-medium space-y-0.5 pt-1">
-                          {ev.location && <div>📍 {ev.location}</div>}
-                          {ev.date && <div>📅 {ev.date}</div>}
-                          {ev.participatingElephants && ev.participatingElephants.length > 0 && (
-                            <div className="text-pine-700 font-semibold truncate">
-                              🐘 {ev.participatingElephants.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleOpenEditEvent(ev)}
-                        className="px-3 py-1 bg-pine-50 hover:bg-pine-100 text-pine-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit className="w-3 h-3" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        onClick={() => ev.id && onDeleteEvent(ev.id)}
-                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY: REGISTERED USERS (VIEW / REMOVE)                     */}
-        {/* ============================================================= */}
-        {adminTab === 'users' && (
-          <div className="space-y-4 animate-fadeIn">
-            {/* Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-parchment-50 p-3.5 sm:p-4 rounded-2xl border border-zinc-200 shadow-2xs">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={usersSearch}
-                  onChange={(e) => setUsersSearch(e.target.value)}
-                  placeholder="නම, Username හෝ Email සොයන්න..."
-                  className="w-full pl-9 pr-3 py-2 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                />
-              </div>
-              <button
-                onClick={loadUsers}
-                disabled={isLoadingUsers}
-                className="w-full sm:w-auto px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUsers ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            </div>
-
-            {isLoadingUsers ? (
-              <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading users...</span>
-              </div>
-            ) : filteredUsers.length === 0 ? (
-              <div className="bg-parchment-50 p-8 text-center rounded-2xl border border-zinc-200 text-zinc-400 text-xs">
-                කිසිදු ලියාපදිංචි පරිශීලකයෙකු හමු නොවීය.
-              </div>
-            ) : (
-              <>
-                {/* Mobile View: Responsive User Cards */}
-                <div className="block lg:hidden space-y-3">
-                  {filteredUsers.map((u) => (
-                    <div
-                      key={u.uid}
-                      className="bg-parchment-50 rounded-2xl p-4 border border-zinc-200 shadow-2xs space-y-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 border border-zinc-200 flex-shrink-0">
-                          {u.photoURL && u.photoURL.trim().length > 0 ? (
-                            <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
-                          ) : (
-                            <User className="w-full h-full p-2 text-zinc-400" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-extrabold text-sm text-[#12231B] truncate">{u.displayName}</h4>
-                          <p className="text-xs text-zinc-500 font-mono truncate">{u.username}</p>
-                          <p className="text-[10px] text-zinc-400 truncate">{u.email || 'No email'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
-                        <span className="text-[10px] text-zinc-400">
-                          {u.followedElephants?.length || 0} Following
-                        </span>
-                        <button
-                          onClick={() => handleTriggerDeleteUser(u)}
-                          className="py-2 px-3 rounded-xl bg-red-50 hover:bg-red-100 text-xs font-bold text-red-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <UserX className="w-3.5 h-3.5" />
-                          <span>Remove User</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop View: High-density Table */}
-                <div className="hidden lg:block bg-parchment-50 rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-zinc-50 border-b border-zinc-200">
-                        <tr>
-                          <th className="py-3 px-4 font-extrabold text-zinc-500 uppercase text-[10px]">Profile</th>
-                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px]">Email</th>
-                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px] text-center">Following</th>
-                          <th className="py-3 px-3 font-extrabold text-zinc-500 uppercase text-[10px]">Joined</th>
-                          <th className="py-3 px-4 font-extrabold text-zinc-500 uppercase text-[10px] text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100">
-                        {filteredUsers.map((u) => {
-                          const joined = u.createdAt?.toDate
-                            ? u.createdAt.toDate().toLocaleDateString()
-                            : (u.createdAt?.seconds ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A');
-                          return (
-                            <tr key={u.uid} className="hover:bg-zinc-50/80 transition-colors">
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 border-2 border-zinc-200 flex-shrink-0">
-                                    {u.photoURL && u.photoURL.trim().length > 0 ? (
-                                      <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
-                                    ) : (
-                                      <User className="w-full h-full p-2 text-zinc-400" />
-                                    )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-extrabold text-sm text-[#12231B] truncate">{u.displayName}</div>
-                                    <div className="text-[11px] text-zinc-400 font-mono truncate">{u.username}</div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-zinc-600 truncate max-w-[220px]">{u.email || 'No email'}</td>
-                              <td className="py-3 px-3 text-center font-mono text-zinc-600">{u.followedElephants?.length || 0}</td>
-                              <td className="py-3 px-3 text-zinc-400 text-[11px]">{joined}</td>
-                              <td className="py-3 px-4 text-right">
-                                <button
-                                  onClick={() => handleTriggerDeleteUser(u)}
-                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Permanently Remove User"
-                                >
-                                  <UserX className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 6: BULK IMPORT (EXCEL / CSV)                          */}
-        {/* ============================================================= */}
-        {adminTab === 'bulk_import' && (
-          <div className="animate-fadeIn">
-            <BulkImportElephants
-              onSaveElephant={onSaveElephant}
-              onSaveElephantsBatch={onSaveElephantsBatch}
-              existingElephants={elephants}
-              language={language}
-              onFinished={async () => {
-                showToast('Bulk import finished successfully!');
-                setAdminTab('elephants');
-              }}
-            />
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 7: DATABASE TOOLS & BACKUPS                           */}
-        {/* ============================================================= */}
-        {adminTab === 'database' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* Backup Cards */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
-                <Download className="w-5 h-5 text-pine-700" />
-                <span>දත්ත ගොනු උපස්ථ කිරීම (Export Full Database)</span>
-              </h3>
-              <p className="text-xs text-zinc-500 font-medium">
-                Cloud Firestore හි ඇති සියලුම හීලෑ අලි ඇතුන්ගේ තොරතුරු JSON, Excel හෝ CSV ආකාරයෙන් බාගත කරගන්න.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <button
-                  onClick={handleExportExcel}
-                  className="p-4 rounded-2xl bg-pine-50 hover:bg-pine-100 border border-pine-200 text-pine-950 text-left transition-all cursor-pointer space-y-1 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <FileSpreadsheet className="w-5 h-5 text-pine-700" />
-                    <Download className="w-4 h-4 text-pine-700 group-hover:translate-y-0.5 transition-transform" />
-                  </div>
-                  <div className="font-extrabold text-sm mt-2">Export Excel (.xlsx)</div>
-                  <div className="text-[11px] text-pine-800">Microsoft Excel Spreadsheet</div>
-                </button>
-
-                <button
-                  onClick={handleExportCSV}
-                  className="p-4 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-950 text-left transition-all cursor-pointer space-y-1 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <FileText className="w-5 h-5 text-blue-700" />
-                    <Download className="w-4 h-4 text-blue-700 group-hover:translate-y-0.5 transition-transform" />
-                  </div>
-                  <div className="font-extrabold text-sm mt-2">Export CSV (.csv)</div>
-                  <div className="text-[11px] text-blue-800">Comma-Separated Values Data</div>
-                </button>
-
-                <button
-                  onClick={handleExportJSON}
-                  className="p-4 rounded-2xl bg-gold-50 hover:bg-gold-100 border border-gold-200 text-gold-950 text-left transition-all cursor-pointer space-y-1 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <Database className="w-5 h-5 text-gold-700" />
-                    <Download className="w-4 h-4 text-gold-700 group-hover:translate-y-0.5 transition-transform" />
-                  </div>
-                  <div className="font-extrabold text-sm mt-2">Export JSON Backup</div>
-                  <div className="text-[11px] text-gold-800">Raw JSON Structure Format</div>
-                </button>
-              </div>
-            </div>
-
-            {/* Full System Multi-Layer Diagnostics Card */}
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <h3 className="font-display text-base font-black text-[#12231B] flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-pine-700" />
-                <span>සමස්ත පද්ධති සන්නිවේදන පරීක්ෂාව (Full System Pipeline Diagnostics)</span>
-              </h3>
-              <p className="text-xs text-zinc-500 font-medium">
-                Firebase Connection, Auth Status, Firestore Read, Firestore Write, සහ Cloudinary Image Upload යන සියලුම ස්ථර ස්වාධීනව එකින් එක පරීක්ෂා කර බලා වාර්තාව ලබාගන්න.
-              </p>
-
-              <div className="space-y-3 pt-1">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      setIsTestingFirestore(true);
-                      setFirestoreTestResult(null);
-                      const diag = await runCompleteSystemDiagnostics();
-                      const report = [
-                        `1. Firebase App Connection: ${diag.firebaseConnection.status ? '✅ PASS' : '❌ FAIL'} (${diag.firebaseConnection.message})`,
-                        `2. Firebase Auth State: ${diag.authStatus.status ? '✅ PASS' : 'ℹ️ PUBLIC'} (UID: ${diag.authStatus.uid || 'None'}, Email: ${diag.authStatus.email})`,
-                        `3. Firestore Document Write: ${diag.firestoreWrite.status ? '✅ PASS' : '❌ FAIL'} (${diag.firestoreWrite.message})`,
-                        `4. Firestore Document Read: ${diag.firestoreRead.status ? '✅ PASS' : '❌ FAIL'} (${diag.firestoreRead.message})`,
-                        `5. Cloudinary Image Upload: ${diag.cloudinaryUpload.status ? '✅ PASS' : '❌ FAIL'} (${diag.cloudinaryUpload.message})`,
-                      ].join('\n\n');
-                      
-                      const allPassed = diag.firebaseConnection.status && diag.firestoreWrite.status && diag.firestoreRead.status && diag.cloudinaryUpload.status;
-                      setFirestoreTestResult(allPassed ? `SUCCESS:\n\n${report}` : `DIAGNOSTIC REPORT:\n\n${report}`);
-                      showToast(allPassed ? 'සියලුම පද්ධති සාර්ථකව ක්‍රියාත්මකයි!' : 'පද්ධති පරීක්ෂාව සම්පූර්ණයි!');
-                    } catch (err: any) {
-                      setFirestoreTestResult(`ERROR: ${err.message || err}`);
-                    } finally {
-                      setIsTestingFirestore(false);
-                    }
-                  }}
-                  disabled={isTestingFirestore}
-                  className="px-5 py-3 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
-                >
-                  {isTestingFirestore ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="w-4 h-4" />
-                  )}
-                  <span>{isTestingFirestore ? 'පද්ධතිය පරීක්ෂා කරමින් පවතී (Running System Diagnostic)...' : 'Run Full System Pipeline Diagnostics'}</span>
-                </button>
-
-                {firestoreTestResult && (
-                  <div className={`p-4 rounded-2xl border text-xs leading-relaxed font-mono whitespace-pre-wrap ${
-                    firestoreTestResult.startsWith('SUCCESS') 
-                      ? 'bg-pine-50 border-pine-200 text-pine-900' 
-                      : 'bg-zinc-50 border-zinc-300 text-zinc-900'
-                  }`}>
-                    <div className="font-bold mb-1 flex items-center gap-1.5">
-                      {firestoreTestResult.startsWith('SUCCESS') ? (
-                        <span className="text-pine-700">✅ SYSTEM HEALTH: ALL SERVICES OPERATIONAL</span>
-                      ) : (
-                        <span className="text-gold-700">📋 SYSTEM DIAGNOSTIC RESULTS</span>
-                      )}
-                    </div>
-                    {firestoreTestResult}
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* ============================================================= */}
-        {/* CATEGORY 8: CLOUDINARY MEDIA SETTINGS                          */}
-        {/* ============================================================= */}
-        {adminTab === 'cloudinary' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-parchment-50 rounded-2xl p-4 sm:p-6 border border-zinc-200 shadow-2xs space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-pine-50 text-[#12231B] flex items-center justify-center flex-shrink-0 border border-pine-100">
-                  <UploadCloud className="w-6 h-6 text-pine-700" />
-                </div>
-                <div>
-                  <h3 className="font-display text-base font-black text-[#12231B]">
-                    Cloudinary මාධ්‍ය ගබඩාව (Media Storage Settings)
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-medium">
-                    වෙබ් අඩවියට එකතු කරන සියලුම පින්තූර සුරක්ෂිතව Cloudinary cloud එකේ ගබඩා කරගන්න (Store all images in Cloudinary).
-                  </p>
-                </div>
-              </div>
-
-              {/* Guide card */}
-              <div className="bg-[#FBF6E8] border border-pine-100 rounded-2xl p-4 text-xs text-[#12231B] space-y-2 leading-relaxed">
-                <h4 className="font-bold flex items-center gap-1 text-pine-950">
-                  <Sparkles className="w-4 h-4 text-pine-700" />
-                  <span>Cloudinary ගිණුම සම්බන්ධ කරගන්නා ආකාරය (Setup Guide):</span>
-                </h4>
-                <ol className="list-decimal pl-5 space-y-1.5 text-zinc-600 font-medium text-[11px]">
-                  <li>
-                    <a href="https://cloudinary.com/" target="_blank" rel="noreferrer" className="text-pine-700 hover:underline font-bold">Cloudinary.com</a> වෙත ගොස් නොමිලේ ගිණුමක් (Free Account) සාදා ගන්න.
-                  </li>
-                  <li>
-                    Dashboard එකෙහි ඇති ඔබගේ <b>Cloud Name</b> එක මෙහි ඇතුළත් කරන්න.
-                  </li>
-                  <li>
-                    Cloudinary Settings (gear icon) -{'>'} <b>Upload</b> වෙත ගොස්, <b>Upload Presets</b> යටතේ <b>"Add upload preset"</b> ක්ලික් කරන්න.
-                  </li>
-                  <li>
-                    Preset එකෙහි <b>Signing Mode</b> එක <b>"Unsigned"</b> ලෙස සකසා එය Save කර, ලැබෙන Preset Name එක මෙහි ඇතුළත් කරන්න.
-                  </li>
-                </ol>
-              </div>
-
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-2xl">
-                  <div>
-                    <div className="text-xs font-bold text-zinc-800">Cloudinary සේවාව සක්‍රීය කරන්න (Enable Cloudinary)</div>
-                    <div className="text-[10px] text-zinc-500 font-medium">සක්‍රීය කලහොත් සියලුම පින්තූර Cloudinary වෙත upload වේ.</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCloudinaryEnabled(!cloudinaryEnabled)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      cloudinaryEnabled ? 'bg-pine-700' : 'bg-zinc-300'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-parchment-50 shadow-sm ring-0 transition duration-200 ease-in-out ${
-                        cloudinaryEnabled ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Cloud Name*</label>
-                    <input
-                      type="text"
-                      value={cloudinaryCloudName}
-                      onChange={(e) => setCloudinaryCloudName(e.target.value.trim())}
-                      placeholder="e.g. dxyz12345"
-                      className="w-full px-4 py-3 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Unsigned Upload Preset*</label>
-                    <input
-                      type="text"
-                      value={cloudinaryUploadPreset}
-                      onChange={(e) => setCloudinaryUploadPreset(e.target.value.trim())}
-                      placeholder="e.g. ml_default_preset"
-                      className="w-full px-4 py-3 bg-[#FBF6E8] border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-pine-700 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isSavingCloudinary}
-                  onClick={async () => {
-                    if (cloudinaryEnabled && (!cloudinaryCloudName || !cloudinaryUploadPreset)) {
-                      showError('Cloud Name සහ Upload Preset ඇතුළත් කිරීම අනිවාර්ය වේ.');
-                      return;
-                    }
-                    try {
-                      setIsSavingCloudinary(true);
-                      await saveCloudinaryConfig({
-                        cloudName: cloudinaryCloudName,
-                        uploadPreset: cloudinaryUploadPreset,
-                        enabled: cloudinaryEnabled,
-                      });
-                      showToast('Cloudinary සැකසුම් සාර්ථකව සුරකින ලදී!');
-                    } catch (err: any) {
-                      showError(`Error saving Cloudinary config: ${err.message || err}`);
-                    } finally {
-                      setIsSavingCloudinary(false);
-                    }
-                  }}
-                  className="px-5 py-3 bg-[#12231B] hover:bg-pine-800 text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {isSavingCloudinary ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>සුරකිමින් පවතී...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>සැකසුම් සුරකින්න (Save Settings)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-      </div>
+          ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete "${deleteTarget.title}"?`}
+          message="This permanently removes the event notice. This cannot be undone."
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
-};
+}
+
+function EventForm({
+  event,
+  onCancel,
+  onSaved,
+  onSaveEvent,
+}: {
+  event: CulturalEvent | null;
+  onCancel: () => void;
+  onSaved: () => void;
+  onSaveEvent: AdminPanelProps['onSaveEvent'];
+}) {
+  const isEdit = !!event;
+  const [form, setForm] = useState(() =>
+    event
+      ? {
+          title: event.title || '',
+          sinhalaTitle: event.sinhalaTitle || '',
+          description: event.description || '',
+          location: event.location || '',
+          date: event.date || '',
+          type: event.type || 'perahera',
+          participatingElephants: (event.participatingElephants || []).join(', '),
+          isActive: event.isActive ?? true,
+          coverImage: event.coverImage || '',
+        }
+      : { ...EMPTY_EVENT_FORM }
+  );
+  const [coverStatus, setCoverStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+  };
+
+  const handleCoverSelected = async (file: File | null) => {
+    if (!file) return;
+    setCoverStatus('uploading');
+    try {
+      const compressed = await compressImageFile(file, { maxDimension: 1280, quality: 0.82 });
+      const result = await uploadPhotoToCloudinary(compressed);
+      setField('coverImage', result.url);
+      setCoverStatus('idle');
+    } catch (err) {
+      console.error('Cover upload failed:', err);
+      setCoverStatus('error');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!form.title.trim()) {
+      setError('Title is required.');
+      return;
+    }
+    if (!form.description.trim()) {
+      setError('Description is required.');
+      return;
+    }
+
+    const payload: Omit<CulturalEvent, 'id' | 'createdAt' | 'updatedAt'> = {
+      title: form.title.trim(),
+      sinhalaTitle: form.sinhalaTitle.trim(),
+      description: form.description.trim(),
+      location: form.location.trim(),
+      date: form.date.trim(),
+      type: form.type,
+      participatingElephants: form.participatingElephants.split(',').map((s) => s.trim()).filter(Boolean),
+      isActive: form.isActive,
+      coverImage: form.coverImage,
+    };
+
+    setSaving(true);
+    try {
+      await onSaveEvent(payload, event?.id);
+      onSaved();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5 animate-fadeIn pb-8">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onCancel} className="w-9 h-9 rounded-xl bg-white border border-parchment-200 flex items-center justify-center text-ink-600 hover:bg-parchment-100 transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h1 className="font-display text-lg font-bold text-ink-950">{isEdit ? 'Edit Event' : 'Add New Event'}</h1>
+          <p className="text-xs text-ink-500">Cultural events, ceremonies and notices shown to visitors.</p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-3 py-2.5 rounded-xl flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-parchment-200 p-4 space-y-4">
+        <Field label="Cover Image">
+          <div className="flex items-center gap-3">
+            <div className="w-20 h-14 rounded-xl bg-parchment-100 overflow-hidden border border-parchment-200 flex items-center justify-center text-ink-300 shrink-0">
+              {coverStatus === 'uploading' ? (
+                <Loader2 className="w-5 h-5 animate-spin text-ink-400" />
+              ) : form.coverImage ? (
+                <img src={form.coverImage} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <ImagePlus className="w-5 h-5" />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-2 rounded-xl bg-parchment-200 text-ink-800 text-xs font-bold hover:bg-parchment-300 transition-colors"
+            >
+              {form.coverImage ? 'Replace image' : 'Upload image'}
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleCoverSelected(e.target.files?.[0] || null)} />
+          </div>
+        </Field>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Title" required>
+            <input className={inputCls} value={form.title} onChange={(e) => setField('title', e.target.value)} />
+          </Field>
+          <Field label="Sinhala Title">
+            <input className={`${inputCls} font-sinhala`} value={form.sinhalaTitle} onChange={(e) => setField('sinhalaTitle', e.target.value)} />
+          </Field>
+          <Field label="Type">
+            <select className={inputCls} value={form.type} onChange={(e) => setField('type', e.target.value as CulturalEvent['type'])}>
+              <option value="perahera">Perahera</option>
+              <option value="ceremony">Ceremony</option>
+              <option value="conservation">Conservation</option>
+              <option value="general">General</option>
+              <option value="update">Platform Update</option>
+              <option value="alert">Urgent Alert</option>
+              <option value="news">News</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+          <Field label="Date">
+            <input className={inputCls} value={form.date} onChange={(e) => setField('date', e.target.value)} placeholder="e.g. 2026-08-30" />
+          </Field>
+          <Field label="Location">
+            <input className={inputCls} value={form.location} onChange={(e) => setField('location', e.target.value)} />
+          </Field>
+          <Field label="Participating Elephants (comma separated)">
+            <input className={inputCls} value={form.participatingElephants} onChange={(e) => setField('participatingElephants', e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Description" required>
+          <textarea className={`${inputCls} min-h-[100px] resize-y`} value={form.description} onChange={(e) => setField('description', e.target.value)} />
+        </Field>
+
+        <CheckboxChip label="Active / Visible to users" checked={form.isActive} onChange={(v) => setField('isActive', v)} />
+      </div>
+
+      <div className="flex gap-2 sticky bottom-0 bg-parchment-50 py-3 -mx-1 px-1">
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl bg-parchment-200 text-ink-800 text-sm font-bold hover:bg-parchment-300 transition-colors">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving || coverStatus === 'uploading'}
+          className="flex-[2] py-2.5 rounded-xl bg-pine-800 hover:bg-pine-900 text-parchment-50 text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+        >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+          {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Publish Event'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// -------------------------------------------------------------
+// Posts moderation tab
+// -------------------------------------------------------------
+
+function PostsTab({ posts }: { posts: ElephantPost[] }) {
+  const [deleteTarget, setDeleteTarget] = useState<ElephantPost | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await deleteElephantPost(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      alert(`Failed to delete post: ${err?.message || err}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div>
+        <h1 className="font-display text-xl font-bold text-ink-950">Community Posts</h1>
+        <p className="text-xs text-ink-500 mt-0.5">{posts.length} post(s) submitted by the community.</p>
+      </div>
+
+      {posts.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-parchment-200 p-10 text-center">
+          <p className="text-sm text-ink-500">No community posts yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {posts.map((post) => (
+            <div key={post.id} className="bg-white rounded-2xl border border-parchment-200 overflow-hidden group relative">
+              <div className="aspect-square bg-parchment-100">
+                <img src={post.photoUrl} alt="" className="w-full h-full object-cover" />
+              </div>
+              <div className="p-2.5">
+                <p className="text-[11px] font-bold text-ink-950 truncate">{post.elephantName}</p>
+                <p className="text-[10.5px] text-ink-500 truncate">by {post.authorName}</p>
+                <div className="flex items-center gap-1 mt-1 text-[10.5px] text-ink-500">
+                  <Heart className="w-3 h-3" /> {post.likesCount || 0}
+                </div>
+              </div>
+              <button
+                onClick={() => setDeleteTarget(post)}
+                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete this post?"
+          message="This permanently removes the post and its photo from the feed. This cannot be undone."
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Users tab
+// -------------------------------------------------------------
+
+function UsersTab() {
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const list = await getAllUsers();
+      setUsers(list);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteUserAccount(deleteTarget.uid);
+      setUsers((prev) => prev.filter((u) => u.uid !== deleteTarget.uid));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      alert(`Failed to delete user: ${err?.message || err}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-xl font-bold text-ink-950">Users</h1>
+          <p className="text-xs text-ink-500 mt-0.5">{users.length} registered profile(s).</p>
+        </div>
+        <button onClick={load} className="text-xs font-bold text-pine-700 hover:underline">
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-6 h-6 text-ink-400 animate-spin" />
+        </div>
+      ) : users.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-parchment-200 p-10 text-center">
+          <p className="text-sm text-ink-500">No registered users yet.</p>
+        </div>
+      ) : (
+        <div className="grid gap-2.5">
+          {users.map((u) => (
+            <div key={u.uid} className="bg-white rounded-2xl border border-parchment-200 p-3.5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-parchment-200 overflow-hidden shrink-0">
+                {u.photoURL ? <img src={u.photoURL} alt="" className="w-full h-full object-cover" /> : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-ink-950 truncate">{u.displayName}</p>
+                <p className="text-[11px] text-ink-500 truncate">{u.email || u.username}</p>
+              </div>
+              <p className="text-[11px] text-ink-500 shrink-0">{u.followedElephants?.length || 0} following</p>
+              <button
+                onClick={() => setDeleteTarget(u)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 hover:bg-red-50 transition-colors shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Remove ${deleteTarget.displayName}?`}
+          message="This deletes their profile and community posts from the platform. This cannot be undone."
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}

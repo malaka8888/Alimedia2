@@ -3,20 +3,16 @@ import {
   getDocs,
   getDoc,
   doc,
-  addDoc,
   updateDoc,
   deleteDoc,
   serverTimestamp,
   query,
-  orderBy,
   where,
   arrayRemove,
-  writeBatch,
   setDoc
 } from 'firebase/firestore';
 import { db, auth } from './config';
 import { Elephant, CulturalEvent } from '../types/elephant';
-import { uploadPhotoToCloudinary } from './cloudinaryService';
 
 const ELEPHANTS_COLLECTION = 'elephants';
 const EVENTS_COLLECTION = 'cultural_events';
@@ -332,188 +328,6 @@ export async function updateElephant(id: string, elephantData: Partial<Elephant>
     console.log('[FIRESTORE] [3] Firestore update confirmed SUCCESS for ID:', id);
   } catch (error: any) {
     console.error(`[FIRESTORE] Error updating elephant ${id}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Independent Diagnostic Tests to verify each layer individually
- */
-export async function runCompleteSystemDiagnostics(): Promise<{
-  firebaseConnection: { status: boolean; message: string };
-  authStatus: { status: boolean; uid?: string; email?: string };
-  firestoreWrite: { status: boolean; docId?: string; message: string };
-  firestoreRead: { status: boolean; count?: number; message: string };
-  cloudinaryUpload: { status: boolean; url?: string; publicId?: string; message: string };
-}> {
-  const results = {
-    firebaseConnection: { status: false, message: 'Not run' },
-    authStatus: { status: false, uid: undefined as string | undefined, email: undefined as string | undefined },
-    firestoreWrite: { status: false, docId: undefined as string | undefined, message: 'Not run' },
-    firestoreRead: { status: false, count: 0, message: 'Not run' },
-    cloudinaryUpload: { status: false, url: undefined as string | undefined, publicId: undefined as string | undefined, message: 'Not run' },
-  };
-
-  // 1. Firebase config & connection check
-  try {
-    if (db && db.app) {
-      results.firebaseConnection = {
-        status: true,
-        message: `Connected to Firebase app [${db.app.name}] with Project ID: ${db.app.options.projectId}`,
-      };
-    }
-  } catch (e: any) {
-    results.firebaseConnection = { status: false, message: e.message || 'Firebase initialization check failed' };
-  }
-
-  // 2. Auth State Check
-  const currentUser = auth.currentUser;
-  if (currentUser) {
-    results.authStatus = {
-      status: true,
-      uid: currentUser.uid,
-      email: currentUser.email || 'Anonymous',
-    };
-  } else {
-    results.authStatus = {
-      status: false,
-      uid: undefined,
-      email: 'No active Firebase Auth user session (operating in public/client session)',
-    };
-  }
-
-  // 3. Firestore Write Check
-  try {
-    const testDocRef = doc(collection(db, 'diagnostics'), `diag_${Date.now()}`);
-    await setDoc(testDocRef, {
-      diagnosticTest: true,
-      timestamp: new Date(),
-      agent: 'Alimedia Diagnostic Suite',
-    });
-    results.firestoreWrite = {
-      status: true,
-      docId: testDocRef.id,
-      message: `Successfully wrote test document to /diagnostics/${testDocRef.id}`,
-    };
-  } catch (e: any) {
-    results.firestoreWrite = {
-      status: false,
-      docId: undefined,
-      message: `Firestore Write Failed: ${e.message || e}`,
-    };
-  }
-
-  // 4. Firestore Read Check
-  try {
-    const elephantsSnap = await getDocs(collection(db, ELEPHANTS_COLLECTION));
-    results.firestoreRead = {
-      status: true,
-      count: elephantsSnap.size,
-      message: `Successfully read ${elephantsSnap.size} elephant document(s) from collection /elephants`,
-    };
-  } catch (e: any) {
-    results.firestoreRead = {
-      status: false,
-      count: 0,
-      message: `Firestore Read Failed: ${e.message || e}`,
-    };
-  }
-
-  // 5. Cloudinary Upload Check
-  try {
-    // 1x1 test image
-    const test1x1Data = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    const uploadRes = await uploadPhotoToCloudinary(test1x1Data);
-    results.cloudinaryUpload = {
-      status: true,
-      url: uploadRes.url,
-      publicId: uploadRes.publicId,
-      message: `Successfully uploaded image to Cloudinary: ${uploadRes.url}`,
-    };
-  } catch (e: any) {
-    results.cloudinaryUpload = {
-      status: false,
-      url: undefined,
-      publicId: undefined,
-      message: `Cloudinary Upload Failed: ${e.message || e}`,
-    };
-  }
-
-  return results;
-}
-
-/**
- * Temporary diagnostic test write to Firestore
- */
-export async function runFirestoreDiagnosticTest(): Promise<string> {
-  try {
-    console.log('[DIAGNOSTIC] [1] Starting connection test write...');
-    // We write to a dedicated collection 'diagnostics' to avoid polluting elephant data
-    const docRef = doc(collection(db, 'diagnostics'), 'test_connection');
-    
-    console.log('[DIAGNOSTIC] [2] Target doc path:', docRef.path);
-    console.log('[DIAGNOSTIC] [3] auth.currentUser?.uid:', auth.currentUser?.uid || 'no-user-auth');
-    
-    const payload = {
-      test: true,
-      timestamp: serverTimestamp(),
-      testedBy: 'Admin Console Diagnostic',
-      testedAt: new Date(),
-    };
-    
-    console.log('[DIAGNOSTIC] [4] Submitting payload to Firestore...');
-    // Await with 10-second timeout
-    await withTimeoutReject(
-      setDoc(docRef, payload),
-      10000,
-      'Diagnostic Firestore write timed out (10s limit). Connection or configuration issue.'
-    );
-    
-    console.log('[DIAGNOSTIC] [5] Write completed successfully!');
-    return 'SUCCESS';
-  } catch (err: any) {
-    console.error('[DIAGNOSTIC] Test write failed:', err);
-    throw err;
-  }
-}
-
-/**
- * Perform a fast batch commit of multiple elephant creations/updates in one network trip
- */
-export async function saveElephantsBatch(
-  operations: {
-    data: Omit<Elephant, 'id' | 'createdAt' | 'updatedAt'>;
-    id?: string;
-  }[]
-): Promise<void> {
-  try {
-    const batch = writeBatch(db);
-    const elephantsCol = collection(db, ELEPHANTS_COLLECTION);
-
-    operations.forEach((op) => {
-      if (op.id) {
-        const docRef = doc(db, ELEPHANTS_COLLECTION, op.id);
-        const rest = op.data;
-        batch.update(docRef, {
-          ...rest,
-          updatedAt: new Date(),
-        });
-      } else {
-        const docRef = doc(elephantsCol); // Auto-generate ref ID
-        batch.set(docRef, {
-          ...op.data,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
-    });
-
-    // Commit in background so it doesn't block UI when offline/slow
-    batch.commit().catch((error) => {
-      console.warn('Background batch commit sync notice:', error);
-    });
-  } catch (error) {
-    console.error('Error in batch commit:', error);
     throw error;
   }
 }
